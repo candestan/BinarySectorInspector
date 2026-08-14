@@ -16,8 +16,8 @@
     <Filter Include="persist">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000004}</UniqueIdentifier>
     </Filter>
-    <Filter Include="pe">
-      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000007}</UniqueIdentifier>
+    <Filter Include="platform">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000008}</UniqueIdentifier>
     </Filter>
     <Filter Include="third_party">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000005}</UniqueIdentifier>
@@ -77,6 +77,9 @@
     </ClCompile>
     <ClCompile Include="src\pe\pe.cpp">
       <Filter>pe</Filter>
+    </ClCompile>
+    <ClCompile Include="src\platform\window_process.cpp">
+      <Filter>platform</Filter>
     </ClCompile>
     <ClCompile Include="third_party\imgui\imgui.cpp">
       <Filter>third_party</Filter>
@@ -145,6 +148,9 @@
     </ClInclude>
     <ClInclude Include="src\pe\pe.h">
       <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\window_process.h">
+      <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="src\app\resource.h">
       <Filter>app</Filter>

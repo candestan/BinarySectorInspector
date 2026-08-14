@@ -32,6 +32,8 @@ struct PeImportFn
 struct PeImportDll
 {
     std::string            name;
+    bool                   delay;
+    bool                   bound;
     std::vector<PeImportFn> fns;
 };
 
@@ -40,6 +42,89 @@ struct PeExportFn
     std::string name;
     uint32_t    ordinal;
     uint32_t    rva;
+    bool        forwarded;
+    char        forwarder[128];
+};
+
+struct PeRelocEntry
+{
+    uint8_t  type;
+    uint16_t offset;
+    uint32_t rva;
+    uint32_t file_off;
+};
+
+struct PeRelocBlock
+{
+    uint32_t page_rva;
+    uint32_t block_size;
+    uint32_t type_absolute;
+    uint32_t type_highlow;
+    uint32_t type_dir64;
+    uint32_t type_other;
+    std::vector<PeRelocEntry> entries;
+};
+
+struct PeTlsInfo
+{
+    bool     present;
+    uint64_t start_raw;
+    uint64_t end_raw;
+    uint64_t index_va;
+    uint64_t callbacks_va;
+    uint32_t zero_fill;
+    uint32_t chars;
+    std::vector<uint32_t> callback_rvas;
+};
+
+struct PeDebugEntry
+{
+    uint32_t type;
+    char     type_name[32];
+    uint32_t timestamp;
+    uint32_t size;
+    uint32_t rva;
+    uint32_t file_off;
+    char     extra[260];
+};
+
+struct PeEntropyRange
+{
+    char     label[48];
+    uint64_t offset;
+    uint64_t size;
+    double   entropy;
+};
+
+struct PeStringEntry
+{
+    uint64_t file_off;
+    bool     utf16;
+    std::string text;
+};
+
+enum PeFindingSev
+{
+    PeFindingInfo = 0,
+    PeFindingNotice,
+    PeFindingWarn
+};
+
+struct PeFinding
+{
+    PeFindingSev sev;
+    char         title[80];
+    char         why[240];
+};
+
+struct PeAddr
+{
+    bool     valid;
+    uint32_t rva;
+    uint64_t va;
+    uint64_t file_off;
+    int      section_index;
+    char     section_name[9];
 };
 
 struct PeRsrcType
@@ -130,6 +215,8 @@ struct PeFile
     uint32_t size_of_image;
     uint32_t size_of_headers;
     uint32_t checksum;
+    uint32_t checksum_computed;
+    bool     checksum_ok;
     uint32_t size_of_stack_res;
     uint32_t size_of_heap_res;
 
@@ -160,6 +247,13 @@ struct PeFile
     std::vector<PeVerInfo>   versions;
     std::vector<PeIconImg>   icons;
     std::vector<PeTypelib>   typelibs;
+    std::vector<PeRelocBlock> relocs;
+    PeTlsInfo                tls;
+    std::vector<PeDebugEntry> debug;
+    char                     pdb_path[260];
+    std::vector<PeEntropyRange> entropy;
+    std::vector<PeStringEntry>  strings;
+    std::vector<PeFinding>      findings;
     uint32_t overlay_off;
     uint64_t overlay_size;
 
@@ -192,5 +286,6 @@ bool        PePatchBytes(uint32_t off, const uint8_t* src, uint32_t n);
 bool        PePatchVerFixed(int index);
 bool        PePatchVerString(int ver_index, int str_index, const char* utf8);
 uint32_t    PeRvaToFileOff(uint32_t rva);
+bool        PeAddrFromRva(const PeFile* pe, uint32_t rva, PeAddr* out);
 bool        PeExportIco(int icon_index, const char* path);
 bool        PeReplaceIco(int icon_index, const char* path);

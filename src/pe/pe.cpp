@@ -1,9 +1,11 @@
 #include "pe/pe.h"
 
 #include <windows.h>
+#include <delayimp.h>
 #include <bcrypt.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include <thread>
 #include <mutex>
 #include <vector>
@@ -14,6 +16,23 @@
 // credit: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
 
 static const size_t kMaxFile = 512ull * 1024ull * 1024ull;
+static const uint32_t kMaxImportDescriptors = 4096;
+static const uint32_t kMaxRelocBlocks = 65536;
+static const uint32_t kMaxRelocEntriesPerBlock = 16384;
+static const uint32_t kMaxTlsCallbacks = 1024;
+static const uint32_t kMaxDebugEntries = 256;
+static const uint32_t kMinExtractedStringLength = 4;
+static const uint32_t kMaxExtractedStrings = 20000;
+static const uint32_t kMaxExtractedStringChars = 512;
+static const uint32_t kUnusualDosStubThreshold = 1024;
+static const double kHighEntropyThreshold = 7.0;
+
+#ifndef IMAGE_DLLCHARACTERISTICS_GUARD_CF
+#define IMAGE_DLLCHARACTERISTICS_GUARD_CF 0x4000
+#endif
+#ifndef IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA
+#define IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA 0x0020
+#endif
 
 template <typename T>
 static const T* At(const uint8_t* b, size_t n, size_t off)
@@ -180,65 +199,98 @@ static void ParseRich(const uint8_t* b, size_t n, uint32_t e_lfanew, PeFile* out
     }
 }
 
+static void ParseOneThunkTable(const uint8_t* b, size_t n, PeFile* pe, uint32_t thunk_rva, PeImportDll* dll)
+{
+    uint32_t toff = RvaToOff(pe, thunk_rva);
+    const int step = pe->pe32plus ? 8 : 4;
+    for (int k = 0; k < 4096; k++)
+    {
+        if (!toff || toff + (size_t)k * step + step > n)
+            break;
+        uint64_t thunk = 0;
+        if (pe->pe32plus)
+            thunk = *(const uint64_t*)(b + toff + k * 8);
+        else
+            thunk = *(const uint32_t*)(b + toff + k * 4);
+        if (!thunk)
+            break;
+        PeImportFn fn{};
+        uint64_t ord_flag = pe->pe32plus ? 0x8000000000000000ull : 0x80000000ull;
+        if (thunk & ord_flag)
+        {
+            fn.ordinal = (uint32_t)(thunk & 0xffff);
+            char tmp[32];
+            snprintf(tmp, 32, "ord_%u", fn.ordinal);
+            fn.name = tmp;
+        }
+        else
+        {
+            uint32_t ib = RvaToOff(pe, (uint32_t)(thunk & 0x7fffffff));
+            const IMAGE_IMPORT_BY_NAME* ibn = At<IMAGE_IMPORT_BY_NAME>(b, n, ib);
+            if (ibn)
+            {
+                fn.hint = ibn->Hint;
+                char fnn[128];
+                if (ReadAscii(b, n, ib + 2, fnn, 128))
+                    fn.name = fnn;
+                else
+                    fn.name = "?";
+            }
+        }
+        dll->fns.push_back(fn);
+    }
+}
+
 static void ParseImports(const uint8_t* b, size_t n, PeFile* pe)
 {
-    if (pe->dd_n <= IMAGE_DIRECTORY_ENTRY_IMPORT)
+    if (pe->dd_n > IMAGE_DIRECTORY_ENTRY_IMPORT && pe->dd_rva[IMAGE_DIRECTORY_ENTRY_IMPORT])
+    {
+        uint32_t rva = pe->dd_rva[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        uint32_t off = RvaToOff(pe, rva);
+        if (off)
+        {
+            pe->has_import = true;
+            for (int d = 0; d < 512; d++)
+            {
+                const IMAGE_IMPORT_DESCRIPTOR* desc = At<IMAGE_IMPORT_DESCRIPTOR>(b, n, off + d * sizeof(IMAGE_IMPORT_DESCRIPTOR));
+                if (!desc || !desc->Name)
+                    break;
+                PeImportDll dll;
+                char name[128];
+                uint32_t noff = RvaToOff(pe, desc->Name);
+                if (!ReadAscii(b, n, noff, name, 128))
+                    snprintf(name, 128, "dll_%u", desc->Name);
+                dll.name = name;
+                dll.delay = false;
+                dll.bound = desc->TimeDateStamp != 0 && desc->TimeDateStamp != 0xFFFFFFFFu;
+                uint32_t thunk_rva = desc->OriginalFirstThunk ? desc->OriginalFirstThunk : desc->FirstThunk;
+                ParseOneThunkTable(b, n, pe, thunk_rva, &dll);
+                pe->imports.push_back(std::move(dll));
+            }
+        }
+    }
+
+    if (pe->dd_n <= IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT || !pe->dd_rva[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT])
         return;
-    uint32_t rva = pe->dd_rva[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    uint32_t off = RvaToOff(pe, rva);
-    if (!off)
+    uint32_t doff = RvaToOff(pe, pe->dd_rva[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT]);
+    if (!doff)
         return;
     pe->has_import = true;
-    for (int d = 0; d < 512; d++)
+    for (uint32_t d = 0; d < kMaxImportDescriptors; d++)
     {
-        const IMAGE_IMPORT_DESCRIPTOR* desc = At<IMAGE_IMPORT_DESCRIPTOR>(b, n, off + d * sizeof(IMAGE_IMPORT_DESCRIPTOR));
-        if (!desc || !desc->Name)
+        const IMAGE_DELAYLOAD_DESCRIPTOR* desc = At<IMAGE_DELAYLOAD_DESCRIPTOR>(b, n, doff + d * sizeof(IMAGE_DELAYLOAD_DESCRIPTOR));
+        if (!desc || !desc->DllNameRVA)
             break;
         PeImportDll dll;
+        dll.delay = true;
+        dll.bound = desc->TimeDateStamp != 0;
         char name[128];
-        uint32_t noff = RvaToOff(pe, desc->Name);
+        uint32_t noff = RvaToOff(pe, desc->DllNameRVA);
         if (!ReadAscii(b, n, noff, name, 128))
-            snprintf(name, 128, "dll_%u", desc->Name);
+            snprintf(name, 128, "delay_%u", desc->DllNameRVA);
         dll.name = name;
-        uint32_t thunk_rva = desc->OriginalFirstThunk ? desc->OriginalFirstThunk : desc->FirstThunk;
-        uint32_t toff = RvaToOff(pe, thunk_rva);
-        const int step = pe->pe32plus ? 8 : 4;
-        for (int k = 0; k < 4096; k++)
-        {
-            if (toff + (size_t)k * step + step > n)
-                break;
-            uint64_t thunk = 0;
-            if (pe->pe32plus)
-                thunk = *(const uint64_t*)(b + toff + k * 8);
-            else
-                thunk = *(const uint32_t*)(b + toff + k * 4);
-            if (!thunk)
-                break;
-            PeImportFn fn{};
-            uint64_t ord_flag = pe->pe32plus ? 0x8000000000000000ull : 0x80000000ull;
-            if (thunk & ord_flag)
-            {
-                fn.ordinal = (uint32_t)(thunk & 0xffff);
-                char tmp[32];
-                snprintf(tmp, 32, "ord_%u", fn.ordinal);
-                fn.name = tmp;
-            }
-            else
-            {
-                uint32_t ib = RvaToOff(pe, (uint32_t)(thunk & 0x7fffffff));
-                const IMAGE_IMPORT_BY_NAME* ibn = At<IMAGE_IMPORT_BY_NAME>(b, n, ib);
-                if (ibn)
-                {
-                    fn.hint = ibn->Hint;
-                    char fnn[128];
-                    if (ReadAscii(b, n, ib + 2, fnn, 128))
-                        fn.name = fnn;
-                    else
-                        fn.name = "?";
-                }
-            }
-            dll.fns.push_back(fn);
-        }
+        uint32_t thunk_rva = desc->ImportNameTableRVA ? desc->ImportNameTableRVA : desc->ImportAddressTableRVA;
+        ParseOneThunkTable(b, n, pe, thunk_rva, &dll);
         pe->imports.push_back(std::move(dll));
     }
 }
@@ -282,6 +334,13 @@ static void ParseExports(const uint8_t* b, size_t n, PeFile* pe)
         uint32_t no = RvaToOff(pe, *nr);
         if (ReadAscii(b, n, no, fn, 128))
             e.name = fn;
+        if (e.rva >= rva && e.rva < rva + pe->dd_size[IMAGE_DIRECTORY_ENTRY_EXPORT])
+        {
+            e.forwarded = true;
+            uint32_t fo = RvaToOff(pe, e.rva);
+            if (!ReadAscii(b, n, fo, e.forwarder, (int)sizeof(e.forwarder)))
+                e.forwarder[0] = 0;
+        }
         pe->exports.push_back(std::move(e));
     }
 }
@@ -769,6 +828,420 @@ static void Detect(PeFile* pe)
         snprintf(pe->packer, sizeof(pe->packer), "VMProtect");
 }
 
+bool PeAddrFromRva(const PeFile* pe, uint32_t rva, PeAddr* out)
+{
+    if (!pe || !out)
+        return false;
+    *out = PeAddr{};
+    out->rva = rva;
+    out->va = pe->image_base + rva;
+    out->section_index = -1;
+    for (int i = 0; i < pe->section_n; i++)
+    {
+        uint32_t va = pe->sections[i].vaddr;
+        uint32_t span = pe->sections[i].vsize;
+        if (pe->sections[i].rawsize > span)
+            span = pe->sections[i].rawsize;
+        if (span == 0)
+            continue;
+        if (rva >= va && rva < va + span)
+        {
+            out->section_index = i;
+            memcpy(out->section_name, pe->sections[i].name, 9);
+            uint32_t delta = rva - va;
+            if (pe->sections[i].rawptr && delta < pe->sections[i].rawsize)
+            {
+                out->file_off = (uint64_t)pe->sections[i].rawptr + delta;
+                out->valid = true;
+            }
+            return true;
+        }
+    }
+    if (rva < pe->size_of_headers)
+    {
+        out->file_off = rva;
+        out->valid = true;
+        return true;
+    }
+    return false;
+}
+
+static uint32_t ComputePeChecksum(const uint8_t* b, size_t n, uint64_t checksum_field_offset)
+{
+    uint32_t sum = 0;
+    uint64_t offset = 0;
+    while (offset + 1 < n)
+    {
+        if (offset >= checksum_field_offset && offset < checksum_field_offset + 4)
+        {
+            offset += 2;
+            continue;
+        }
+        uint16_t word = (uint16_t)b[offset] | ((uint16_t)b[offset + 1] << 8);
+        sum += word;
+        sum = (sum & 0xFFFFu) + (sum >> 16);
+        offset += 2;
+    }
+    if (offset < n && !(offset >= checksum_field_offset && offset < checksum_field_offset + 4))
+    {
+        sum += b[offset];
+        sum = (sum & 0xFFFFu) + (sum >> 16);
+    }
+    sum = (sum & 0xFFFFu) + (sum >> 16);
+    sum = (sum & 0xFFFFu) + (sum >> 16);
+    return sum + (uint32_t)n;
+}
+
+static double ShannonEntropy(const uint8_t* data, uint64_t size)
+{
+    if (!data || size == 0)
+        return 0.0;
+    uint64_t counts[256] = {};
+    for (uint64_t i = 0; i < size; i++)
+        counts[data[i]]++;
+    double entropy = 0.0;
+    double nn = (double)size;
+    for (int i = 0; i < 256; i++)
+    {
+        if (!counts[i])
+            continue;
+        double p = (double)counts[i] / nn;
+        entropy -= p * log2(p);
+    }
+    return entropy;
+}
+
+static void PushEntropy(PeFile* pe, const char* label, uint64_t off, uint64_t size, const uint8_t* b, size_t n)
+{
+    PeEntropyRange r{};
+    snprintf(r.label, sizeof(r.label), "%s", label);
+    r.offset = off;
+    r.size = size;
+    if (off < n && size && off + size <= n)
+        r.entropy = ShannonEntropy(b + (size_t)off, size);
+    pe->entropy.push_back(r);
+}
+
+static void ParseRelocs(const uint8_t* b, size_t n, PeFile* pe)
+{
+    if (pe->dd_n <= IMAGE_DIRECTORY_ENTRY_BASERELOC || !pe->dd_rva[IMAGE_DIRECTORY_ENTRY_BASERELOC])
+        return;
+    uint32_t rva = pe->dd_rva[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+    uint32_t dir_size = pe->dd_size[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+    uint32_t consumed = 0;
+    uint32_t blocks = 0;
+    while (consumed + sizeof(IMAGE_BASE_RELOCATION) <= dir_size && blocks < kMaxRelocBlocks)
+    {
+        uint32_t off = RvaToOff(pe, rva + consumed);
+        const IMAGE_BASE_RELOCATION* block = At<IMAGE_BASE_RELOCATION>(b, n, off);
+        if (!block || block->SizeOfBlock < sizeof(IMAGE_BASE_RELOCATION))
+            break;
+        if (consumed + block->SizeOfBlock > dir_size)
+            break;
+        PeRelocBlock parsed{};
+        parsed.page_rva = block->VirtualAddress;
+        parsed.block_size = block->SizeOfBlock;
+        uint32_t entry_count = (block->SizeOfBlock - (uint32_t)sizeof(IMAGE_BASE_RELOCATION)) / 2u;
+        uint32_t store = entry_count < kMaxRelocEntriesPerBlock ? entry_count : kMaxRelocEntriesPerBlock;
+        for (uint32_t i = 0; i < entry_count; i++)
+        {
+            const uint16_t* ep = At<uint16_t>(b, n, off + sizeof(IMAGE_BASE_RELOCATION) + i * 2);
+            if (!ep)
+                break;
+            uint8_t type = (uint8_t)(*ep >> 12);
+            uint16_t rel_off = (uint16_t)(*ep & 0x0FFF);
+            if (type == IMAGE_REL_BASED_ABSOLUTE)
+                parsed.type_absolute++;
+            else if (type == IMAGE_REL_BASED_HIGHLOW)
+                parsed.type_highlow++;
+            else if (type == IMAGE_REL_BASED_DIR64)
+                parsed.type_dir64++;
+            else
+                parsed.type_other++;
+            if (i < store)
+            {
+                PeRelocEntry re{};
+                re.type = type;
+                re.offset = rel_off;
+                re.rva = block->VirtualAddress + rel_off;
+                PeAddr a;
+                if (PeAddrFromRva(pe, re.rva, &a) && a.valid)
+                    re.file_off = (uint32_t)a.file_off;
+                parsed.entries.push_back(re);
+            }
+        }
+        pe->relocs.push_back(std::move(parsed));
+        consumed += block->SizeOfBlock;
+        blocks++;
+    }
+}
+
+static void ParseTls(const uint8_t* b, size_t n, PeFile* pe)
+{
+    if (pe->dd_n <= IMAGE_DIRECTORY_ENTRY_TLS || !pe->dd_rva[IMAGE_DIRECTORY_ENTRY_TLS])
+        return;
+    uint32_t off = RvaToOff(pe, pe->dd_rva[IMAGE_DIRECTORY_ENTRY_TLS]);
+    uint64_t callbacks_va = 0;
+    if (pe->pe32plus)
+    {
+        const IMAGE_TLS_DIRECTORY64* raw = At<IMAGE_TLS_DIRECTORY64>(b, n, off);
+        if (!raw)
+            return;
+        pe->tls.start_raw = raw->StartAddressOfRawData;
+        pe->tls.end_raw = raw->EndAddressOfRawData;
+        pe->tls.index_va = raw->AddressOfIndex;
+        pe->tls.callbacks_va = raw->AddressOfCallBacks;
+        pe->tls.zero_fill = raw->SizeOfZeroFill;
+        pe->tls.chars = raw->Characteristics;
+        callbacks_va = raw->AddressOfCallBacks;
+    }
+    else
+    {
+        const IMAGE_TLS_DIRECTORY32* raw = At<IMAGE_TLS_DIRECTORY32>(b, n, off);
+        if (!raw)
+            return;
+        pe->tls.start_raw = raw->StartAddressOfRawData;
+        pe->tls.end_raw = raw->EndAddressOfRawData;
+        pe->tls.index_va = raw->AddressOfIndex;
+        pe->tls.callbacks_va = raw->AddressOfCallBacks;
+        pe->tls.zero_fill = raw->SizeOfZeroFill;
+        pe->tls.chars = raw->Characteristics;
+        callbacks_va = raw->AddressOfCallBacks;
+    }
+    pe->tls.present = true;
+    pe->has_tls = true;
+    if (callbacks_va < pe->image_base)
+        return;
+    uint32_t cb_rva = (uint32_t)(callbacks_va - pe->image_base);
+    uint32_t ptr_size = pe->pe32plus ? 8u : 4u;
+    for (uint32_t i = 0; i < kMaxTlsCallbacks; i++)
+    {
+        uint32_t slot = RvaToOff(pe, cb_rva + i * ptr_size);
+        if (!slot)
+            break;
+        uint64_t value = 0;
+        if (pe->pe32plus)
+        {
+            const uint64_t* v = At<uint64_t>(b, n, slot);
+            if (!v || *v == 0)
+                break;
+            value = *v;
+        }
+        else
+        {
+            const uint32_t* v = At<uint32_t>(b, n, slot);
+            if (!v || *v == 0)
+                break;
+            value = *v;
+        }
+        if (value >= pe->image_base)
+            pe->tls.callback_rvas.push_back((uint32_t)(value - pe->image_base));
+    }
+}
+
+static const char* DebugTypeName(uint32_t type)
+{
+    switch (type)
+    {
+    case IMAGE_DEBUG_TYPE_COFF: return "COFF";
+    case IMAGE_DEBUG_TYPE_CODEVIEW: return "CODEVIEW";
+    case IMAGE_DEBUG_TYPE_FPO: return "FPO";
+    case IMAGE_DEBUG_TYPE_MISC: return "MISC";
+    case IMAGE_DEBUG_TYPE_EXCEPTION: return "EXCEPTION";
+    case IMAGE_DEBUG_TYPE_FIXUP: return "FIXUP";
+    case IMAGE_DEBUG_TYPE_OMAP_TO_SRC: return "OMAP_TO_SRC";
+    case IMAGE_DEBUG_TYPE_OMAP_FROM_SRC: return "OMAP_FROM_SRC";
+    case IMAGE_DEBUG_TYPE_BORLAND: return "BORLAND";
+    case IMAGE_DEBUG_TYPE_CLSID: return "CLSID";
+    case IMAGE_DEBUG_TYPE_VC_FEATURE: return "VC_FEATURE";
+    case IMAGE_DEBUG_TYPE_POGO: return "POGO";
+    case IMAGE_DEBUG_TYPE_ILTCG: return "ILTCG";
+    case IMAGE_DEBUG_TYPE_REPRO: return "REPRO";
+    default: return "OTHER";
+    }
+}
+
+static void ParseDebug(const uint8_t* b, size_t n, PeFile* pe)
+{
+    if (pe->dd_n <= IMAGE_DIRECTORY_ENTRY_DEBUG || !pe->dd_rva[IMAGE_DIRECTORY_ENTRY_DEBUG])
+        return;
+    uint32_t off = RvaToOff(pe, pe->dd_rva[IMAGE_DIRECTORY_ENTRY_DEBUG]);
+    uint32_t count = pe->dd_size[IMAGE_DIRECTORY_ENTRY_DEBUG] / (uint32_t)sizeof(IMAGE_DEBUG_DIRECTORY);
+    if (count > kMaxDebugEntries)
+        count = kMaxDebugEntries;
+    pe->pdb_path[0] = 0;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const IMAGE_DEBUG_DIRECTORY* raw = At<IMAGE_DEBUG_DIRECTORY>(b, n, off + i * sizeof(IMAGE_DEBUG_DIRECTORY));
+        if (!raw)
+            break;
+        PeDebugEntry e{};
+        e.type = raw->Type;
+        snprintf(e.type_name, sizeof(e.type_name), "%s", DebugTypeName(raw->Type));
+        e.timestamp = raw->TimeDateStamp;
+        e.size = raw->SizeOfData;
+        e.rva = raw->AddressOfRawData;
+        e.file_off = raw->PointerToRawData;
+        if (raw->Type == IMAGE_DEBUG_TYPE_CODEVIEW && raw->PointerToRawData && raw->SizeOfData >= 24)
+        {
+            const uint32_t* sig = At<uint32_t>(b, n, raw->PointerToRawData);
+            if (sig && *sig == 0x53445352)
+                ReadAscii(b, n, raw->PointerToRawData + 24, pe->pdb_path, (int)sizeof(pe->pdb_path));
+            else if (sig && *sig == 0x3031424E)
+                ReadAscii(b, n, raw->PointerToRawData + 16, pe->pdb_path, (int)sizeof(pe->pdb_path));
+            snprintf(e.extra, sizeof(e.extra), "%s", pe->pdb_path);
+        }
+        pe->debug.push_back(e);
+    }
+}
+
+static bool AsciiPrintable(uint8_t c)
+{
+    return c == '\t' || (c >= 0x20 && c <= 0x7E);
+}
+
+static void ExtractStrings(const uint8_t* b, size_t n, PeFile* pe)
+{
+    std::string ascii;
+    uint64_t ascii_start = 0;
+    auto flush_ascii = [&]() {
+        if (ascii.size() >= kMinExtractedStringLength && pe->strings.size() < kMaxExtractedStrings)
+        {
+            if (ascii.size() > kMaxExtractedStringChars)
+                ascii.resize(kMaxExtractedStringChars);
+            PeStringEntry s;
+            s.file_off = ascii_start;
+            s.utf16 = false;
+            s.text = std::move(ascii);
+            pe->strings.push_back(std::move(s));
+        }
+        ascii.clear();
+    };
+    for (size_t i = 0; i < n; i++)
+    {
+        if (AsciiPrintable(b[i]))
+        {
+            if (ascii.empty())
+                ascii_start = i;
+            ascii.push_back((char)b[i]);
+        }
+        else
+            flush_ascii();
+        if (pe->strings.size() >= kMaxExtractedStrings)
+            return;
+    }
+    flush_ascii();
+
+    std::string utf16;
+    uint64_t utf_start = 0;
+    auto flush_utf = [&]() {
+        if (utf16.size() >= kMinExtractedStringLength && pe->strings.size() < kMaxExtractedStrings)
+        {
+            if (utf16.size() > kMaxExtractedStringChars)
+                utf16.resize(kMaxExtractedStringChars);
+            PeStringEntry s;
+            s.file_off = utf_start;
+            s.utf16 = true;
+            s.text = std::move(utf16);
+            pe->strings.push_back(std::move(s));
+        }
+        utf16.clear();
+    };
+    for (size_t i = 0; i + 1 < n; i++)
+    {
+        if (b[i + 1] == 0 && AsciiPrintable(b[i]))
+        {
+            if (utf16.empty())
+                utf_start = i;
+            utf16.push_back((char)b[i]);
+            i++;
+        }
+        else
+            flush_utf();
+        if (pe->strings.size() >= kMaxExtractedStrings)
+            return;
+    }
+    flush_utf();
+}
+
+static void AddFinding(PeFile* pe, PeFindingSev sev, const char* title, const char* why)
+{
+    PeFinding f{};
+    f.sev = sev;
+    snprintf(f.title, sizeof(f.title), "%s", title);
+    snprintf(f.why, sizeof(f.why), "%s", why);
+    pe->findings.push_back(f);
+}
+
+static void CollectFindings(PeFile* pe)
+{
+    if (pe->e_lfanew > kUnusualDosStubThreshold)
+        AddFinding(pe, PeFindingNotice, "Large DOS stub / e_lfanew",
+            "e_lfanew is unusually far from the DOS header.");
+    if (pe->sections_n == 0)
+        AddFinding(pe, PeFindingWarn, "No sections", "NumberOfSections is 0.");
+    if (pe->timestamp == 0 || pe->timestamp == 0xFFFFFFFFu)
+        AddFinding(pe, PeFindingNotice, "Unusual timestamp", "TimeDateStamp is 0 or 0xFFFFFFFF.");
+    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) == 0)
+        AddFinding(pe, PeFindingNotice, "NX (DEP) not advertised", "IMAGE_DLLCHARACTERISTICS_NX_COMPAT is clear.");
+    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) == 0)
+        AddFinding(pe, PeFindingNotice, "ASLR not advertised", "IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE is clear.");
+    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) == 0)
+        AddFinding(pe, PeFindingInfo, "CFG not advertised", "IMAGE_DLLCHARACTERISTICS_GUARD_CF is clear.");
+    if (pe->pe32plus && (pe->dllchars & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA) == 0)
+        AddFinding(pe, PeFindingInfo, "High-entropy VA not advertised", "PE32+ without HIGH_ENTROPY_VA.");
+    if (pe->checksum != 0 && !pe->checksum_ok)
+        AddFinding(pe, PeFindingNotice, "PE checksum mismatch", "Optional header CheckSum does not match the computed checksum.");
+
+    for (int i = 0; i < pe->section_n; i++)
+    {
+        const PeSection& s = pe->sections[i];
+        if ((s.chars & IMAGE_SCN_MEM_EXECUTE) && (s.chars & IMAGE_SCN_MEM_WRITE))
+        {
+            char why[240];
+            snprintf(why, sizeof(why), "Section \"%s\" is executable and writable.", s.name);
+            AddFinding(pe, PeFindingWarn, "Writable and executable section", why);
+        }
+        uint64_t vend = (uint64_t)s.vaddr + (s.vsize ? s.vsize : s.rawsize);
+        if (pe->size_of_image && vend > pe->size_of_image)
+        {
+            char why[240];
+            snprintf(why, sizeof(why), "Section \"%s\" virtual range extends past SizeOfImage.", s.name);
+            AddFinding(pe, PeFindingWarn, "Section exceeds SizeOfImage", why);
+        }
+    }
+    if (pe->overlay_size)
+        AddFinding(pe, PeFindingNotice, "Overlay data", "Bytes exist after the last section raw range.");
+
+    PeAddr ep;
+    PeAddrFromRva(pe, pe->entry_rva, &ep);
+    if (pe->entry_rva && ep.section_index < 0)
+        AddFinding(pe, PeFindingWarn, "Entry point outside sections", "AddressOfEntryPoint is not in a section.");
+    else if (ep.section_index >= 0)
+    {
+        if (strncmp(ep.section_name, "UPX", 3) == 0 || strcmp(ep.section_name, ".themida") == 0 ||
+            strcmp(ep.section_name, ".aspack") == 0)
+            AddFinding(pe, PeFindingNotice, "Unusual entry point section", "Entry point section name is associated with packers.");
+    }
+    if (pe->imports.empty() && (pe->chars & IMAGE_FILE_DLL) == 0)
+        AddFinding(pe, PeFindingNotice, "No imports", "No import or delay-load descriptors were parsed.");
+    if (pe->tls.present && !pe->tls.callback_rvas.empty())
+        AddFinding(pe, PeFindingNotice, "TLS callbacks present", "The loader runs TLS callbacks before the entry point.");
+    if (pe->pdb_path[0])
+        AddFinding(pe, PeFindingInfo, "PDB path present", "CodeView debug info contains a PDB path.");
+    for (const PeEntropyRange& r : pe->entropy)
+    {
+        if (r.size >= 256 && r.entropy >= kHighEntropyThreshold)
+        {
+            char title[80];
+            snprintf(title, sizeof(title), "High entropy: %s", r.label);
+            AddFinding(pe, PeFindingNotice, title, "Shannon entropy is high (possible compression or packing).");
+        }
+    }
+    if (pe->section_align == 0 || pe->file_align == 0)
+        AddFinding(pe, PeFindingWarn, "Zero alignment", "SectionAlignment or FileAlignment is 0.");
+}
+
 bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* progress)
 {
     *out = PeFile{};
@@ -889,6 +1362,11 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         return false;
     }
     SubsystemName(out->subsystem, out->subsystem_s, 32);
+    {
+        uint64_t csum_off = (uint64_t)opt_off + 64;
+        out->checksum_computed = ComputePeChecksum(data, n, csum_off);
+        out->checksum_ok = (out->checksum == 0) || (out->checksum == out->checksum_computed);
+    }
     if (progress)
         progress->store(0.45f);
 
@@ -956,7 +1434,22 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
     }
     ParseIcons(data, n, out);
     ParseClr(data, n, out);
+    if (progress)
+        progress->store(0.90f);
+    ParseRelocs(data, n, out);
+    ParseTls(data, n, out);
+    ParseDebug(data, n, out);
+    PushEntropy(out, "Entire file", 0, n, data, n);
+    for (int i = 0; i < out->section_n; i++)
+        PushEntropy(out, out->sections[i].name[0] ? out->sections[i].name : "(unnamed)",
+            out->sections[i].rawptr, out->sections[i].rawsize, data, n);
+    if (out->overlay_size)
+        PushEntropy(out, "Overlay", out->overlay_off, out->overlay_size, data, n);
+    if (progress)
+        progress->store(0.95f);
+    ExtractStrings(data, n, out);
     Detect(out);
+    CollectFindings(out);
     if (progress)
         progress->store(1.f);
     out->ok = true;

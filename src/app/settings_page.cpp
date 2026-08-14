@@ -70,7 +70,7 @@ static void LangCombo()
     char preview[96];
     snprintf(preview, sizeof(preview), "%s", I18nName());
     if (UiButton(preview, ImVec2(w, 0)))
-        ImGui::OpenPopup("lang_combo");
+        ImGui::OpenPopup("lang_combo", ImGuiPopupFlags_NoReopen);
     ImVec2 chev(btn_p.x + w - 16.f, btn_p.y + ImGui::GetFrameHeight() * 0.5f);
     IconDraw(IconChevron, chev, 6.f, ThemeColMuted());
 
@@ -285,9 +285,9 @@ void SettingsPageDraw()
         ImGui::PopFont();
 
     ImGui::Spacing();
-    ImVec2 body = ImGui::GetContentRegionAvail();
+    float body_h = ImGui::GetContentRegionAvail().y;
     const float nav_w = 176.f;
-    ImGui::BeginChild("settings_nav", ImVec2(nav_w, body.y), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("settings_nav", ImVec2(nav_w, body_h), ImGuiChildFlags_Borders);
     if (NavTab("tab_general", I18nGet("settings.general"), g_tab == SettingsTabGeneral))
         g_tab = SettingsTabGeneral;
     if (NavTab("tab_perf", I18nGet("settings.performance"), g_tab == SettingsTabPerformance))
@@ -296,7 +296,7 @@ void SettingsPageDraw()
         g_tab = SettingsTabThemes;
     ImGui::EndChild();
     ImGui::SameLine();
-    ImGui::BeginChild("settings_body", ImVec2(body.x - nav_w - 8.f, body.y), ImGuiChildFlags_None);
+    ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
     if (g_tab == SettingsTabThemes)
         DrawThemes();
     else if (g_tab == SettingsTabPerformance)

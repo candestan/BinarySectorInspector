@@ -22,6 +22,10 @@
 #include <math.h>
 #include <vector>
 
+#ifndef IMAGE_DLLCHARACTERISTICS_GUARD_CF
+#define IMAGE_DLLCHARACTERISTICS_GUARD_CF 0x4000
+#endif
+
 static char g_sel[96] = "overview";
 static char g_save_msg[160];
 static MemoryEditor g_hex;
@@ -31,6 +35,13 @@ static int g_icon_sel = 0;
 static unsigned g_dirt;
 static int g_rsrc_kind; // 0 all, 1 version, 2 icons, 3 com
 static int g_rsrc_row;
+static int g_reloc_sel;
+static int g_sec_sel;
+static int g_imp_sel;
+static int g_exp_sel;
+static char g_str_filter[128];
+static char g_imp_filter[128];
+static char g_exp_filter[128];
 static int g_save_phase; // 0 idle, 1 spinning, 2 summary
 static float g_save_t;
 static bool g_save_wrote;
@@ -55,6 +66,16 @@ static float g_tree_sz = 248.f;
 static float g_cons_sz = 148.f;
 static int   g_tree_pri = 1;
 static int   g_cons_pri = 0;
+
+static const float kFieldCol = 220.f;
+static const float kFieldValueMin = 80.f;
+static const float kSplitListFrac = 0.36f;
+static const float kSplitListMin = 180.f;
+static const float kSplitPrevMin = 160.f;
+static const float kTreeSzMin = 160.f;
+static const float kConsSzMin = 72.f;
+static const float kSplitHit = 5.f;
+static const float kFilterGap = 6.f;
 
 static char g_ulog[96][220];
 static int  g_ulog_i;
@@ -89,8 +110,8 @@ static void LoadViewLayout()
     g_cons_dock = SettingsGetInt("view.console_dock", DockBottom);
     int tw = SettingsGetInt("view.tree_w", 248);
     int ch = SettingsGetInt("view.console_h", 148);
-    g_tree_sz = tw < 160 ? 160.f : (float)tw;
-    g_cons_sz = ch < 72 ? 72.f : (float)ch;
+    g_tree_sz = tw < (int)kTreeSzMin ? kTreeSzMin : (float)tw;
+    g_cons_sz = ch < (int)kConsSzMin ? kConsSzMin : (float)ch;
     g_tree_pri = SettingsGetInt("view.tree_pri", 1);
     g_cons_pri = SettingsGetInt("view.console_pri", 0);
     if (g_tree_dock < 0 || g_tree_dock > 3)
@@ -218,6 +239,13 @@ static const char* FileNameOf(const char* path)
     return slash ? slash + 1 : path;
 }
 
+static void EmptyHint(const char* key = "pe.none")
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet(key));
+    ImGui::PopStyleColor();
+}
+
 static void Field(const char* k, const char* v, const char* help = nullptr)
 {
     ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(ThemeColMuted()), "%s", k);
@@ -228,8 +256,20 @@ static void Field(const char* k, const char* v, const char* help = nullptr)
         UiHelpMark(help);
         ImGui::PopID();
     }
-    ImGui::SameLine(220.f);
+    float content_w = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    float col = kFieldCol;
+    if (col > content_w - kFieldValueMin)
+        col = content_w * 0.42f;
+    if (col < 72.f)
+        col = 72.f;
+    float label_right = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetScrollX();
+    if (label_right + 8.f > col)
+        ImGui::SameLine(0.f, 8.f);
+    else
+        ImGui::SameLine(col);
+    ImGui::PushTextWrapPos(0.f);
     ImGui::TextUnformatted(v ? v : "");
+    ImGui::PopTextWrapPos();
 }
 
 static void FieldU(const char* k, uint64_t v, bool hex, const char* help = nullptr)
@@ -249,19 +289,14 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
     bool sel = strcmp(g_sel, id) == 0;
     if (strcmp(id, "rsrc") == 0 && (strcmp(g_sel, "ver") == 0 || strcmp(g_sel, "icons") == 0 || strcmp(g_sel, "com") == 0))
         sel = true;
-    ImGuiTreeNodeFlags f = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_OpenOnArrow |
-        ImGuiTreeNodeFlags_FramePadding;
+    ImGuiTreeNodeFlags f = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding;
     if (leaf)
         f |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     if (sel)
         f |= ImGuiTreeNodeFlags_Selected;
     bool open = ImGui::TreeNodeEx(id, f, "   %s", label);
-    if (ImGui::IsItemClicked())
-    {
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         InspectorSelect(id);
-        if (strcmp(id, "rsrc") == 0)
-            g_rsrc_kind = 0;
-    }
     ImVec2 a = ImGui::GetItemRectMin();
     ImVec2 b = ImGui::GetItemRectMax();
     float h = b.y - a.y;
@@ -284,7 +319,7 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
             g_sel_bar_h += (h - g_sel_bar_h) * k;
         }
     }
-    IconDraw(icon, ImVec2(a.x + pad * 0.55f, a.y + h * 0.5f), 6.f,
+    IconDraw(icon, ImVec2(a.x + pad + 2.f, a.y + h * 0.5f), 6.f,
         sel ? ThemeColAccent() : UiLerpCol(ThemeColMuted(), ThemeColAccent(), ht));
     if (dirty)
     {
@@ -296,14 +331,14 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
     return open;
 }
 
-static bool RsrcBtn(const char* id, const char* label, int kind, bool dirty)
+static bool RsrcBtn(const char* id, const char* label, int kind, bool dirty, float width)
 {
     bool sel = strcmp(g_sel, "rsrc") == 0 && g_rsrc_kind == kind;
     if (strcmp(g_sel, id) == 0)
         sel = true;
     ImGui::PushID(id);
     ImVec2 p = ImGui::GetCursorScreenPos();
-    float w = ImGui::GetContentRegionAvail().x;
+    float w = width > 0.f ? width : ImGui::GetContentRegionAvail().x;
     float h = ImGui::GetFrameHeight();
     bool hit = ImGui::InvisibleButton("hit", ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
@@ -340,7 +375,7 @@ static bool TopMenu(const char* id, const char* label)
     float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsPopupOpen("##drop"));
     UiHoverSweep(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ht);
     if (press)
-        ImGui::OpenPopup("##drop");
+        ImGui::OpenPopup("##drop", ImGuiPopupFlags_NoReopen);
     bool open = ImGui::BeginPopup("##drop");
     if (!open)
         ImGui::PopID();
@@ -428,6 +463,8 @@ static void DrawMenubar()
             if (AppPickOpenPe(path, MAX_PATH))
                 AppOpenPath(path);
         }
+        if (ImGui::MenuItem(I18nGet("welcome.from_window"), nullptr, false, !locked))
+            AppOpenWindowPicker();
         if (ImGui::BeginMenu(I18nGet("menu.open_recent"), SettingsRecentsCount() > 0 && !locked))
         {
             char rec[MAX_PATH];
@@ -552,6 +589,17 @@ static void DrawOverview(const PeFile* pe)
     FieldU("ImageBase", pe->image_base, true, I18nGet("help.fld.imagebase"));
     Field("CLR / COM", pe->has_com || !pe->typelibs.empty() ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.clr"));
+    FieldU("DllCharacteristics", pe->dllchars, true, I18nGet("help.fld.dllchars"));
+    Field("NX / DEP", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+        I18nGet("help.fld.nx"));
+    Field("ASLR", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+        I18nGet("help.fld.aslr"));
+    Field("CFG", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+        I18nGet("help.fld.cfg"));
+    Field(I18nGet("pe.checksum"), pe->checksum_ok ? I18nGet("pe.checksum_ok") : I18nGet("pe.checksum_bad"),
+        I18nGet("help.fld.checksum"));
+    FieldU(I18nGet("pe.checksum_field"), pe->checksum, true, I18nGet("help.fld.checksum"));
+    FieldU(I18nGet("pe.checksum_computed"), pe->checksum_computed, true, I18nGet("help.fld.checksum"));
     if (pe->overlay_size)
         FieldU("Overlay", pe->overlay_size, false, I18nGet("help.fld.overlay"));
 }
@@ -588,6 +636,25 @@ static void DrawSection(const PeFile* pe, int i)
     FieldU("PointerToRawData", s.rawptr, true, I18nGet("help.fld.rawptr"));
     FieldU("SizeOfRawData", s.rawsize, true, I18nGet("help.fld.rawsize"));
     FieldU("Characteristics", s.chars, true, I18nGet("help.fld.secchars"));
+    if (UiButton(I18nGet("menu.go")) && s.rawptr)
+        GoHex(s.rawptr);
+}
+
+static float SplitListW()
+{
+    float avail = ImGui::GetContentRegionAvail().x;
+    float w = avail * kSplitListFrac;
+    if (w < kSplitListMin)
+        w = kSplitListMin;
+    if (w + kSplitPrevMin > avail)
+        w = avail - kSplitPrevMin;
+    if (w < avail * 0.35f)
+        w = avail * 0.45f;
+    if (w < 80.f)
+        w = 80.f;
+    if (w > avail - 8.f)
+        w = avail * 0.5f;
+    return w;
 }
 
 static void DrawImportDll(const PeFile* pe, int i)
@@ -596,10 +663,216 @@ static void DrawImportDll(const PeFile* pe, int i)
         return;
     const PeImportDll& d = pe->imports[i];
     Field("DLL", d.name.c_str());
+    Field(I18nGet("pe.delay"), d.delay ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.delay"));
+    Field(I18nGet("pe.bound"), d.bound ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.bound"));
     FieldU(I18nGet("pe.functions"), d.fns.size(), false);
     ImGui::Spacing();
+    if (!ImGui::BeginTable("impfn", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+        return;
+    ImGui::TableSetupColumn("Name");
+    ImGui::TableSetupColumn("Hint/Ord");
+    ImGui::TableHeadersRow();
+    ImGuiListClipper clipper;
+    clipper.Begin((int)d.fns.size());
+    while (clipper.Step())
+    {
+        for (int fi = clipper.DisplayStart; fi < clipper.DisplayEnd; fi++)
+        {
+            const PeImportFn& f = d.fns[fi];
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(f.name.empty() ? "(ordinal)" : f.name.c_str());
+            ImGui::TableNextColumn();
+            if (f.ordinal)
+                ImGui::Text("#%u", f.ordinal);
+            else
+                ImGui::Text("%u", f.hint);
+        }
+    }
+    ImGui::EndTable();
+}
+
+static void DrawSections(const PeFile* pe)
+{
+    ImGui::BeginChild("sec_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    if (pe->section_n == 0)
+        EmptyHint();
+    else if (ImGui::BeginTable("sect", 5,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp))
+    {
+        if (g_sec_sel < 0 || g_sec_sel >= pe->section_n)
+            g_sec_sel = 0;
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("VA");
+        ImGui::TableSetupColumn("VSize");
+        ImGui::TableSetupColumn("RawPtr");
+        ImGui::TableSetupColumn("RawSize");
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < pe->section_n; i++)
+        {
+            const PeSection& s = pe->sections[i];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const char* name = s.name[0] ? s.name : "(empty)";
+            if (ImGui::Selectable(name, g_sec_sel == i, ImGuiSelectableFlags_SpanAllColumns))
+                g_sec_sel = i;
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", s.vaddr);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", s.vsize);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", s.rawptr);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", s.rawsize);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("sec_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
+    if (pe->section_n == 0)
+        EmptyHint();
+    else
+        DrawSection(pe, g_sec_sel);
+    ImGui::EndChild();
+}
+
+static bool ImportDllMatches(const PeImportDll& d, const char* filter)
+{
+    if (!filter || !filter[0])
+        return true;
+    if (strstr(d.name.c_str(), filter))
+        return true;
     for (const PeImportFn& f : d.fns)
-        ImGui::Text("  %s", f.name.c_str());
+    {
+        if (strstr(f.name.c_str(), filter))
+            return true;
+    }
+    return false;
+}
+
+static void DrawImports(const PeFile* pe)
+{
+    ImGui::InputTextWithHint("##impf", I18nGet("welcome.window_filter"), g_imp_filter, (int)sizeof(g_imp_filter));
+    ImGui::BeginChild("imp_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    if (pe->imports.empty())
+        EmptyHint();
+    int shown = 0;
+    bool sel_visible = false;
+    for (int i = 0; i < (int)pe->imports.size(); i++)
+    {
+        const PeImportDll& d = pe->imports[i];
+        if (!ImportDllMatches(d, g_imp_filter))
+            continue;
+        shown++;
+        ImGui::PushID(i);
+        char lab[192];
+        if (d.delay)
+            snprintf(lab, sizeof(lab), "%s  [%s]", d.name.c_str(), I18nGet("pe.delay"));
+        else
+            snprintf(lab, sizeof(lab), "%s", d.name.c_str());
+        if (ImGui::Selectable(lab, g_imp_sel == i))
+            g_imp_sel = i;
+        if (g_imp_sel == i)
+            sel_visible = true;
+        ImGui::PopID();
+    }
+    if (!pe->imports.empty() && shown == 0)
+        EmptyHint();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("imp_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
+    if (pe->imports.empty())
+        EmptyHint();
+    else
+    {
+        if (!sel_visible)
+        {
+            g_imp_sel = -1;
+            for (int i = 0; i < (int)pe->imports.size(); i++)
+            {
+                if (!ImportDllMatches(pe->imports[i], g_imp_filter))
+                    continue;
+                g_imp_sel = i;
+                break;
+            }
+        }
+        if (g_imp_sel < 0 || g_imp_sel >= (int)pe->imports.size())
+            EmptyHint();
+        else
+            DrawImportDll(pe, g_imp_sel);
+    }
+    ImGui::EndChild();
+}
+
+static void DrawExportRow(const PeExportFn& e, int i)
+{
+    ImGui::PushID(i);
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    char ord[16];
+    snprintf(ord, sizeof(ord), "%u", e.ordinal);
+    if (ImGui::Selectable(ord, g_exp_sel == i, ImGuiSelectableFlags_SpanAllColumns))
+        g_exp_sel = i;
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(e.name.empty() ? "(ordinal)" : e.name.c_str());
+    ImGui::TableNextColumn();
+    if (e.forwarded)
+        ImGui::TextUnformatted(e.forwarder);
+    else
+        ImGui::Text("%08X", e.rva);
+    ImGui::PopID();
+}
+
+static void DrawExports(const PeFile* pe)
+{
+    ImGui::InputTextWithHint("##expf", I18nGet("welcome.window_filter"), g_exp_filter, (int)sizeof(g_exp_filter));
+    if (pe->exports.empty())
+    {
+        EmptyHint();
+        return;
+    }
+
+    static std::vector<int> idx;
+    static char last_filter[128];
+    static char last_path[MAX_PATH];
+    if (strcmp(last_path, pe->path) != 0 || strcmp(last_filter, g_exp_filter) != 0)
+    {
+        snprintf(last_path, sizeof(last_path), "%s", pe->path);
+        snprintf(last_filter, sizeof(last_filter), "%s", g_exp_filter);
+        idx.clear();
+        for (int i = 0; i < (int)pe->exports.size(); i++)
+        {
+            const PeExportFn& e = pe->exports[i];
+            if (!g_exp_filter[0] ||
+                strstr(e.name.c_str(), g_exp_filter) ||
+                strstr(e.forwarder, g_exp_filter))
+                idx.push_back(i);
+        }
+    }
+    if (idx.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (!ImGui::BeginTable("expt", 3,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+        return;
+    ImGui::TableSetupColumn("Ordinal", ImGuiTableColumnFlags_WidthFixed, 80.f);
+    ImGui::TableSetupColumn("Name");
+    ImGui::TableSetupColumn("Address");
+    ImGui::TableHeadersRow();
+    ImGuiListClipper clipper;
+    clipper.Begin((int)idx.size());
+    while (clipper.Step())
+    {
+        for (int n = clipper.DisplayStart; n < clipper.DisplayEnd; n++)
+            DrawExportRow(pe->exports[idx[n]], idx[n]);
+    }
+    ImGui::EndTable();
 }
 
 static void DrawCom(PeFile* pe)
@@ -652,7 +925,7 @@ static void DrawCom(PeFile* pe)
     ImGui::Spacing();
     ImGui::TextUnformatted("TYPELIB");
     if (pe->typelibs.empty())
-        ImGui::TextUnformatted(I18nGet("pe.none"));
+        EmptyHint();
     for (int i = 0; i < (int)pe->typelibs.size(); i++)
     {
         PeTypelib& t = pe->typelibs[i];
@@ -833,7 +1106,7 @@ static void DrawHex()
     uint8_t* b = PeJobBytes(&n);
     if (!b || !n)
     {
-        ImGui::TextUnformatted(I18nGet("pe.none"));
+        EmptyHint();
         return;
     }
 
@@ -895,13 +1168,45 @@ static void DrawRsrcPeek(const PeRsrcLeaf& L)
         GoHex(L.file_off);
 }
 
+static void DrawRsrcFilters()
+{
+    struct Filter
+    {
+        const char* id;
+        const char* key;
+        int kind;
+        unsigned dirt;
+    };
+    const Filter fs[4] = {
+        { "all", "pe.rsrc_all", 0, 0 },
+        { "ver", "pe.version", 1, DirtVer },
+        { "icons", "pe.icons", 2, DirtIco },
+        { "com", "pe.com", 3, DirtCom },
+    };
+    float avail = ImGui::GetContentRegionAvail().x;
+    float x = 0.f;
+    for (int i = 0; i < 4; i++)
+    {
+        const char* lab = I18nGet(fs[i].key);
+        bool dirty = fs[i].dirt && (g_dirt & fs[i].dirt) != 0;
+        float w = ImGui::CalcTextSize(lab).x + 24.f;
+        if (dirty)
+            w += 12.f;
+        if (i && x + w > avail)
+            x = 0.f;
+        else if (i)
+        {
+            ImGui::SameLine(0.f, kFilterGap);
+            x += kFilterGap;
+        }
+        RsrcBtn(fs[i].id, lab, fs[i].kind, dirty, w);
+        x += w;
+    }
+}
+
 static void DrawRsrc(PeFile* pe)
 {
-    float avail = ImGui::GetContentRegionAvail().x;
-    float list_w = avail * 0.36f;
-    if (list_w < 180.f)
-        list_w = 180.f;
-    ImGui::BeginChild("rsrc_list", ImVec2(list_w, 0.f), ImGuiChildFlags_Borders);
+    DrawRsrcFilters();
 
     int rows = 0;
     if (g_rsrc_kind == 1)
@@ -915,9 +1220,9 @@ static void DrawRsrc(PeFile* pe)
     if (g_rsrc_row < 0 || g_rsrc_row >= rows)
         g_rsrc_row = 0;
 
+    ImGui::BeginChild("rsrc_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
     if (rows == 0)
-        ImGui::TextUnformatted(I18nGet("pe.none"));
-
+        EmptyHint();
     for (int i = 0; i < rows; i++)
     {
         char lab[128];
@@ -955,41 +1260,285 @@ static void DrawRsrc(PeFile* pe)
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("rsrc_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
-    if (rows == 0)
-        ImGui::TextUnformatted(I18nGet("pe.rsrc_preview"));
-    else if (g_rsrc_kind == 1)
+    if (g_rsrc_kind == 1)
         DrawVersion(pe);
     else if (g_rsrc_kind == 2)
         DrawIcons(pe);
     else if (g_rsrc_kind == 3)
         DrawCom(pe);
+    else if (rows == 0)
+        EmptyHint();
     else
         DrawRsrcPeek(pe->rsrc[g_rsrc_row]);
     ImGui::EndChild();
+}
+
+static const char* RelocTypeName(uint8_t t)
+{
+    if (t == IMAGE_REL_BASED_ABSOLUTE) return "ABS";
+    if (t == IMAGE_REL_BASED_HIGHLOW) return "HIGHLOW";
+    if (t == IMAGE_REL_BASED_DIR64) return "DIR64";
+    return "OTHER";
+}
+
+static void DrawRelocs(const PeFile* pe)
+{
+    FieldU(I18nGet("pe.reloc_blocks"), pe->relocs.size(), false, I18nGet("help.fld.relocs"));
+    if (pe->relocs.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (g_reloc_sel < 0 || g_reloc_sel >= (int)pe->relocs.size())
+        g_reloc_sel = 0;
+    if (ImGui::BeginTable("relb", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(-1.f, 160.f)))
+    {
+        ImGui::TableSetupColumn("Page RVA");
+        ImGui::TableSetupColumn("Size");
+        ImGui::TableSetupColumn("Entries");
+        ImGui::TableSetupColumn("HL/64");
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < (int)pe->relocs.size(); i++)
+        {
+            const PeRelocBlock& b = pe->relocs[i];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            char id[32];
+            snprintf(id, sizeof(id), "%08X", b.page_rva);
+            if (ImGui::Selectable(id, g_reloc_sel == i, ImGuiSelectableFlags_SpanAllColumns))
+                g_reloc_sel = i;
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", b.block_size);
+            ImGui::TableNextColumn();
+            ImGui::Text("%zu", b.entries.size());
+            ImGui::TableNextColumn();
+            ImGui::Text("%u / %u", b.type_highlow, b.type_dir64);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    const PeRelocBlock& b = pe->relocs[g_reloc_sel];
+    if (ImGui::BeginTable("rele", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    {
+        ImGui::TableSetupColumn("Type");
+        ImGui::TableSetupColumn("Off");
+        ImGui::TableSetupColumn("RVA");
+        ImGui::TableSetupColumn("File");
+        ImGui::TableHeadersRow();
+        int show = (int)b.entries.size();
+        if (show > 4096)
+            show = 4096;
+        for (int i = 0; i < show; i++)
+        {
+            const PeRelocEntry& e = b.entries[i];
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(RelocTypeName(e.type));
+            ImGui::TableNextColumn();
+            ImGui::Text("%03X", e.offset);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", e.rva);
+            ImGui::TableNextColumn();
+            ImGui::PushID(i);
+            char off[16];
+            snprintf(off, sizeof(off), "%08X", e.file_off);
+            if (e.file_off)
+            {
+                if (ImGui::Selectable(off, false))
+                    GoHex(e.file_off);
+            }
+            else
+                ImGui::TextUnformatted(off);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+}
+
+static void DrawTls(const PeFile* pe)
+{
+    Field(I18nGet("pe.tls"), pe->tls.present ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.tls"));
+    if (!pe->tls.present)
+        return;
+    FieldU("StartAddressOfRawData", pe->tls.start_raw, true);
+    FieldU("EndAddressOfRawData", pe->tls.end_raw, true);
+    FieldU("AddressOfIndex", pe->tls.index_va, true);
+    FieldU("AddressOfCallBacks", pe->tls.callbacks_va, true);
+    FieldU("SizeOfZeroFill", pe->tls.zero_fill, false);
+    FieldU(I18nGet("pe.functions"), pe->tls.callback_rvas.size(), false);
+    for (uint32_t i = 0; i < (uint32_t)pe->tls.callback_rvas.size(); i++)
+    {
+        uint32_t rva = pe->tls.callback_rvas[i];
+        PeAddr a;
+        PeAddrFromRva(pe, rva, &a);
+        ImGui::PushID((int)i);
+        char lab[48];
+        snprintf(lab, sizeof(lab), "rva %08X", rva);
+        if (ImGui::Selectable(lab, false) && a.valid)
+            GoHex((uint32_t)a.file_off);
+        ImGui::PopID();
+    }
+}
+
+static void DrawDebug(const PeFile* pe)
+{
+    Field("PDB", pe->pdb_path[0] ? pe->pdb_path : I18nGet("pe.none"), I18nGet("help.fld.pdb"));
+    if (pe->debug.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (ImGui::BeginTable("dbg", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    {
+        ImGui::TableSetupColumn("Type");
+        ImGui::TableSetupColumn("Time");
+        ImGui::TableSetupColumn("Size");
+        ImGui::TableSetupColumn("File");
+        ImGui::TableSetupColumn("Extra");
+        ImGui::TableHeadersRow();
+        for (const PeDebugEntry& e : pe->debug)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(e.type_name);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", e.timestamp);
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", e.size);
+            ImGui::TableNextColumn();
+            ImGui::Text("%08X", e.file_off);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(e.extra);
+        }
+        ImGui::EndTable();
+    }
+}
+
+static void DrawEntropy(const PeFile* pe)
+{
+    if (pe->entropy.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (ImGui::BeginTable("ent", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    {
+        ImGui::TableSetupColumn(I18nGet("pe.range"));
+        ImGui::TableSetupColumn("Offset");
+        ImGui::TableSetupColumn("Size");
+        ImGui::TableSetupColumn(I18nGet("pe.entropy"));
+        ImGui::TableHeadersRow();
+        for (const PeEntropyRange& r : pe->entropy)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(r.label);
+            ImGui::TableNextColumn();
+            ImGui::Text("%llX", (unsigned long long)r.offset);
+            ImGui::TableNextColumn();
+            ImGui::Text("%llu", (unsigned long long)r.size);
+            ImGui::TableNextColumn();
+            ImGui::Text("%.3f", r.entropy);
+        }
+        ImGui::EndTable();
+    }
+}
+
+static void DrawStrings(const PeFile* pe)
+{
+    ImGui::InputTextWithHint("##sf", I18nGet("welcome.window_filter"), g_str_filter, (int)sizeof(g_str_filter));
+    if (pe->strings.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (ImGui::BeginTable("str", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    {
+        ImGui::TableSetupColumn("Off");
+        ImGui::TableSetupColumn("Enc");
+        ImGui::TableSetupColumn("Text");
+        ImGui::TableHeadersRow();
+        int shown = 0;
+        for (int i = 0; i < (int)pe->strings.size(); i++)
+        {
+            const PeStringEntry& s = pe->strings[i];
+            if (g_str_filter[0] && !strstr(s.text.c_str(), g_str_filter))
+                continue;
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            char id[32];
+            snprintf(id, sizeof(id), "%llX", (unsigned long long)s.file_off);
+            if (ImGui::Selectable(id, false, ImGuiSelectableFlags_SpanAllColumns))
+                GoHex((uint32_t)s.file_off);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(s.utf16 ? "u16" : "asc");
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(s.text.c_str());
+            ImGui::PopID();
+            if (++shown >= 4000)
+                break;
+        }
+        ImGui::EndTable();
+        if (shown == 0)
+            EmptyHint();
+    }
+}
+
+static void DrawFindings(const PeFile* pe)
+{
+    if (pe->findings.empty())
+    {
+        EmptyHint();
+        return;
+    }
+    if (ImGui::BeginTable("find", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    {
+        ImGui::TableSetupColumn(I18nGet("pe.severity"));
+        ImGui::TableSetupColumn(I18nGet("pe.finding"));
+        ImGui::TableSetupColumn(I18nGet("pe.why"));
+        ImGui::TableHeadersRow();
+        for (const PeFinding& f : pe->findings)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const char* sev = "info";
+            if (f.sev == PeFindingNotice) sev = "notice";
+            if (f.sev == PeFindingWarn) sev = "warn";
+            ImGui::TextUnformatted(sev);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(f.title);
+            ImGui::TableNextColumn();
+            ImGui::TextWrapped("%s", f.why);
+        }
+        ImGui::EndTable();
+    }
 }
 
 static void DrawDetail(PeFile* pe)
 {
     if (strcmp(g_sel, "overview") == 0) { DrawOverview(pe); return; }
     if (strcmp(g_sel, "headers") == 0) { DrawHeaders(pe); return; }
-    if (strcmp(g_sel, "sections") == 0)
+    if (strncmp(g_sel, "sec:", 4) == 0)
     {
-        FieldU(I18nGet("pe.sections"), (uint64_t)pe->section_n, false);
-        return;
+        g_sec_sel = atoi(g_sel + 4);
+        snprintf(g_sel, sizeof(g_sel), "sections");
     }
-    if (strncmp(g_sel, "sec:", 4) == 0) { DrawSection(pe, atoi(g_sel + 4)); return; }
-    if (strcmp(g_sel, "imports") == 0)
+    if (strcmp(g_sel, "sections") == 0) { DrawSections(pe); return; }
+    if (strncmp(g_sel, "imp:", 4) == 0)
     {
-        FieldU("DLLs", pe->imports.size(), false);
-        return;
+        g_imp_sel = atoi(g_sel + 4);
+        snprintf(g_sel, sizeof(g_sel), "imports");
     }
-    if (strncmp(g_sel, "imp:", 4) == 0) { DrawImportDll(pe, atoi(g_sel + 4)); return; }
-    if (strcmp(g_sel, "exports") == 0)
-    {
-        for (const PeExportFn& e : pe->exports)
-            ImGui::Text("  %s", e.name.c_str());
-        return;
-    }
+    if (strcmp(g_sel, "imports") == 0) { DrawImports(pe); return; }
+    if (strcmp(g_sel, "exports") == 0) { DrawExports(pe); return; }
+    if (strcmp(g_sel, "relocs") == 0) { DrawRelocs(pe); return; }
+    if (strcmp(g_sel, "tls") == 0) { DrawTls(pe); return; }
+    if (strcmp(g_sel, "debug") == 0) { DrawDebug(pe); return; }
+    if (strcmp(g_sel, "entropy") == 0) { DrawEntropy(pe); return; }
+    if (strcmp(g_sel, "strings") == 0) { DrawStrings(pe); return; }
+    if (strcmp(g_sel, "findings") == 0) { DrawFindings(pe); return; }
     if (strcmp(g_sel, "ver") == 0)
     {
         snprintf(g_sel, sizeof(g_sel), "rsrc");
@@ -1020,39 +1569,26 @@ static void DrawTree(const PeFile* pe)
 {
     Node("overview", I18nGet("pe.overview"), IconFile, true, false);
     Node("headers", I18nGet("pe.headers"), IconCpu, true, false);
-    if (Node("sections", I18nGet("pe.sections"), IconBox, false, false))
-    {
-        for (int i = 0; i < pe->section_n; i++)
-        {
-            char id[32];
-            snprintf(id, sizeof(id), "sec:%d", i);
-            Node(id, pe->sections[i].name[0] ? pe->sections[i].name : "(empty)", IconFile, true, false);
-        }
-        ImGui::TreePop();
-    }
-    if (pe->has_import && Node("imports", I18nGet("pe.imports"), IconImport, false, false))
-    {
-        for (int i = 0; i < (int)pe->imports.size(); i++)
-        {
-            char id[32];
-            snprintf(id, sizeof(id), "imp:%d", i);
-            Node(id, pe->imports[i].name.c_str(), IconFile, true, false);
-        }
-        ImGui::TreePop();
-    }
-    if (pe->has_export)
-        Node("exports", I18nGet("pe.exports"), IconExport, true, false);
+    Node("sections", I18nGet("pe.sections"), IconBox, true, false);
+    Node("imports", I18nGet("pe.imports"), IconImport, true, false);
+    Node("exports", I18nGet("pe.exports"), IconExport, true, false);
+    if (!pe->relocs.empty())
+        Node("relocs", I18nGet("pe.relocs"), IconGo, true, false);
+    if (pe->tls.present)
+        Node("tls", I18nGet("pe.tls"), IconShield, true, false);
+    if (!pe->debug.empty())
+        Node("debug", I18nGet("pe.debug"), IconSearch, true, false);
+    if (!pe->entropy.empty())
+        Node("entropy", I18nGet("pe.entropy"), IconCpu, true, false);
+    if (!pe->strings.empty())
+        Node("strings", I18nGet("pe.strings"), IconEdit, true, false);
+    if (!pe->findings.empty())
+        Node("findings", I18nGet("pe.findings"), IconEye, true, false);
     Node("hex", I18nGet("pe.hex"), IconHex, true, (g_dirt & DirtHex) != 0);
     if (pe->has_resource || pe->has_com || !pe->typelibs.empty() || !pe->versions.empty() || !pe->icons.empty())
     {
         bool rdirty = (g_dirt & (DirtVer | DirtIco | DirtCom)) != 0;
-        if (Node("rsrc", I18nGet("pe.resources"), IconFolder, false, rdirty))
-        {
-            RsrcBtn("ver", I18nGet("pe.version"), 1, (g_dirt & DirtVer) != 0);
-            RsrcBtn("icons", I18nGet("pe.icons"), 2, (g_dirt & DirtIco) != 0);
-            RsrcBtn("com", I18nGet("pe.com"), 3, (g_dirt & DirtCom) != 0);
-            ImGui::TreePop();
-        }
+        Node("rsrc", I18nGet("pe.resources"), IconFolder, true, rdirty);
     }
     if (pe->overlay_size)
         Node("overlay", "Overlay", IconFile, true, false);
@@ -1175,33 +1711,49 @@ static void FillTree()
     if (PeJobFailed())
     {
         ImGui::TextUnformatted(I18nGet("pe.fail"));
+        if (PeJobError()[0])
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+            ImGui::TextWrapped("%s", PeJobError());
+            ImGui::PopStyleColor();
+        }
         return;
     }
     const PeFile* pe = PeJobResult();
     if (!pe)
         return;
-    static char seen[260];
+    static char seen[MAX_PATH];
     if (strcmp(seen, pe->path) != 0)
     {
         snprintf(seen, sizeof(seen), "%s", pe->path);
         snprintf(g_sel, sizeof(g_sel), "overview");
         g_save_msg[0] = 0;
         g_icon_sel = 0;
+        g_sec_sel = 0;
+        g_imp_sel = 0;
+        g_exp_sel = 0;
+        g_reloc_sel = 0;
+        g_rsrc_row = 0;
+        g_imp_filter[0] = 0;
+        g_exp_filter[0] = 0;
+        g_str_filter[0] = 0;
         g_dirt = 0;
         g_rsrc_kind = 0;
+        g_hex_goto = (size_t)-1;
+        g_hex.HighlightMin = g_hex.HighlightMax = (size_t)-1;
         NukeIconTex();
         UiLog("opened %s", FileNameOf(pe->path));
         g_sel_bar_y = -1.f;
     }
-        DrawTree(pe);
-        if (g_sel_bar_y >= 0.f)
-        {
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            ImVec2 a(g_sel_bar_x0, g_sel_bar_y);
-            ImVec2 b(g_sel_bar_x1, g_sel_bar_y + g_sel_bar_h);
-            dl->AddRectFilled(a, b, ThemeColAccentA(22.f / 255.f));
-            UiAccentBar(a, b, 1.f, dl);
-        }
+    DrawTree(pe);
+    if (g_sel_bar_y >= 0.f)
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 a(g_sel_bar_x0, g_sel_bar_y);
+        ImVec2 b(g_sel_bar_x1, g_sel_bar_y + g_sel_bar_h);
+        dl->AddRectFilled(a, b, ThemeColAccentA(22.f / 255.f));
+        UiAccentBar(a, b, 1.f, dl);
+    }
 }
 
 static void FillBody()
@@ -1276,14 +1828,14 @@ static void FillCons()
 static void SplitV(const char* id, float* sz, const char* key, float sign)
 {
     ImGui::PushID(id);
-    ImGui::InvisibleButton("sp", ImVec2(5.f, ImGui::GetContentRegionAvail().y));
+    ImGui::InvisibleButton("sp", ImVec2(kSplitHit, ImGui::GetContentRegionAvail().y));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (ImGui::IsItemActive())
     {
         *sz += sign * ImGui::GetIO().MouseDelta.x;
-        if (*sz < 160.f)
-            *sz = 160.f;
+        if (*sz < kTreeSzMin)
+            *sz = kTreeSzMin;
     }
     if (ImGui::IsItemDeactivated())
         SettingsSetInt(key, (int)*sz);
@@ -1293,14 +1845,14 @@ static void SplitV(const char* id, float* sz, const char* key, float sign)
 static void SplitH(const char* id, float* sz, const char* key, float sign)
 {
     ImGui::PushID(id);
-    ImGui::InvisibleButton("sp", ImVec2(ImGui::GetContentRegionAvail().x, 5.f));
+    ImGui::InvisibleButton("sp", ImVec2(ImGui::GetContentRegionAvail().x, kSplitHit));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
     if (ImGui::IsItemActive())
     {
         *sz += sign * ImGui::GetIO().MouseDelta.y;
-        if (*sz < 72.f)
-            *sz = 72.f;
+        if (*sz < kConsSzMin)
+            *sz = kConsSzMin;
     }
     if (ImGui::IsItemDeactivated())
         SettingsSetInt(key, (int)*sz);
@@ -1412,7 +1964,7 @@ void InspectorDraw()
     if (g_cons_on && g_cons_dock == DockBottom)
         bot_h += g_cons_sz;
 
-    float mid_h = av.y - (top ? top_h + 5.f : 0.f) - (bot ? bot_h + 5.f : 0.f);
+    float mid_h = av.y - (top ? top_h + kSplitHit : 0.f) - (bot ? bot_h + kSplitHit : 0.f);
     if (mid_h < 64.f)
         mid_h = 64.f;
 
@@ -1440,7 +1992,7 @@ void InspectorDraw()
         if (!right_w || g_cons_sz > right_w)
             right_w = g_cons_sz;
     }
-    float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + 5.f : 0.f);
+    float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + kSplitHit : 0.f);
     if (body_w < 80.f)
         body_w = 80.f;
     ImGui::BeginChild("pe_body", ImVec2(body_w, 0.f), ImGuiChildFlags_None);

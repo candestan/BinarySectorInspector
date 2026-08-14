@@ -107,6 +107,7 @@
     <ClCompile Include="src\persist\settings.cpp" />
     <ClCompile Include="src\persist\paths.cpp" />
     <ClCompile Include="src\pe\pe.cpp" />
+    <ClCompile Include="src\platform\window_process.cpp" />
     <ClCompile Include="third_party\imgui\imgui.cpp" />
     <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
     <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
@@ -131,6 +132,7 @@
     <ClInclude Include="src\persist\settings.h" />
     <ClInclude Include="src\persist\paths.h" />
     <ClInclude Include="src\pe\pe.h" />
+    <ClInclude Include="src\platform\window_process.h" />
     <ClInclude Include="src\app\resource.h" />
     <ClInclude Include="third_party\imgui\imgui.h" />
     <ClInclude Include="third_party\imgui_club\imgui_memory_editor\imgui_memory_editor.h" />

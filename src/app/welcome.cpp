@@ -16,6 +16,10 @@
 #include <string.h>
 #include <math.h>
 
+static const float kWelcomePad = 24.f;
+static const float kWelcomeFooterH = 78.f;
+static const float kWelcomeQuotePad = 10.f;
+static const float kWelcomeFooterLeft = 280.f;
 static const char* kGithubUrl = "https://github.com/candestan/BinarySectorInspector";
 static const char* kAuthorUrl = "https://github.com/candestan";
 
@@ -70,8 +74,8 @@ void WelcomeDraw()
     ImVec2 wp = ImGui::GetWindowPos();
     ImVec2 ws = ImGui::GetWindowSize();
     const float bar = ThemeTitleBarH();
-    const float footer_h = 78.f;
-    const float pad = 24.f;
+    const float footer_h = kWelcomeFooterH;
+    const float pad = kWelcomePad;
     float top = wp.y + bar + 8.f;
     float bot = wp.y + ws.y - footer_h;
     float mid_x = wp.x + ws.x * 0.5f;
@@ -125,7 +129,12 @@ void WelcomeDraw()
 
     ImGui::SetCursorScreenPos(ImVec2(recents_x, recents_y + 26.f));
     const float row_h = ImGui::GetTextLineHeightWithSpacing();
-    const float recents_box_h = row_h * 5.f + ImGui::GetFrameHeight() + 20.f;
+    float recents_box_h = row_h * 5.f + ImGui::GetFrameHeight() + 20.f;
+    float recents_max_h = bot - 8.f - (recents_y + 26.f);
+    if (recents_max_h < recents_box_h)
+        recents_box_h = recents_max_h;
+    if (recents_box_h < row_h * 2.f + ImGui::GetFrameHeight())
+        recents_box_h = row_h * 2.f + ImGui::GetFrameHeight();
     ImGui::BeginChild("recents", ImVec2(recents_w, recents_box_h), ImGuiChildFlags_Borders);
     int n = SettingsRecentsCount();
     if (n > 5)
@@ -164,6 +173,9 @@ void WelcomeDraw()
         if (PickFile(path, MAX_PATH))
             AppOpenPath(path);
     }
+    ImGui::SameLine();
+    if (IconButton("fromwin", IconBox, I18nGet("welcome.from_window")))
+        AppOpenWindowPicker();
     ImGui::EndChild();
     ImGui::PopStyleVar();
 
@@ -202,11 +214,15 @@ void WelcomeDraw()
         else
             snprintf(buf, sizeof(buf), "\"%s\"", line.text ? line.text : "");
         ImVec2 qs = ImGui::CalcTextSize(buf);
-        float qy = wp.y + ws.y - qs.y - 10.f;
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-        ImGui::SetCursorScreenPos(ImVec2(mid_x - qs.x * 0.5f, qy));
-        ImGui::TextUnformatted(buf);
-        ImGui::PopStyleColor();
+        float qy = wp.y + ws.y - qs.y - kWelcomeQuotePad;
+        float qx = wp.x + ws.x - pad - qs.x;
+        if (qx >= wp.x + pad + kWelcomeFooterLeft)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+            ImGui::SetCursorScreenPos(ImVec2(qx, qy));
+            ImGui::TextUnformatted(buf);
+            ImGui::PopStyleColor();
+        }
     }
 
     if (ThemeFontSmall())

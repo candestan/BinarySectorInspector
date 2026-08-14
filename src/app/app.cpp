@@ -9,6 +9,8 @@
 #include "engine/engine.h"
 #include "persist/settings.h"
 #include "pe/pe.h"
+#include "platform/window_process.h"
+#include "imgui.h"
 
 #include <windows.h>
 #include <commdlg.h>
@@ -19,6 +21,13 @@ static AppPage g_page = AppPageWelcome;
 static AppPage g_settings_from = AppPageWelcome;
 static char    g_open_path[MAX_PATH];
 static float   g_page_sweep = 1.f;
+
+static const int kWindowPickCap = 256;
+static bool g_win_pick;
+static PlatformWindowEntry g_win_rows[kWindowPickCap];
+static int g_win_n;
+static int g_win_sel = -1;
+static char g_win_filter[128];
 
 void AppInit()
 {
@@ -159,6 +168,103 @@ bool AppPickSavePe(char* out, int cap)
     return out[0] != 0;
 }
 
+void AppOpenWindowPicker()
+{
+    g_win_pick = true;
+    g_win_sel = -1;
+    g_win_filter[0] = 0;
+    g_win_n = PlatformSnapshotWindows(g_win_rows, kWindowPickCap);
+}
+
+static bool RowMatchesFilter(const PlatformWindowEntry& e)
+{
+    if (!g_win_filter[0])
+        return true;
+    char pid[16];
+    snprintf(pid, sizeof(pid), "%lu", (unsigned long)e.pid);
+    return strstr(e.title, g_win_filter) || strstr(e.image_path, g_win_filter) || strstr(pid, g_win_filter);
+}
+
+static void DrawWindowPicker()
+{
+    if (!g_win_pick)
+        return;
+    ImGui::OpenPopup("##winpick");
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(640.f, 420.f), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("##winpick", &g_win_pick, ImGuiWindowFlags_NoTitleBar))
+        return;
+    ImGui::TextUnformatted(I18nGet("welcome.from_window"));
+    ImGui::SameLine();
+    if (UiButton(I18nGet("welcome.refresh_windows")))
+        g_win_n = PlatformSnapshotWindows(g_win_rows, kWindowPickCap);
+    ImGui::InputTextWithHint("##winf", I18nGet("welcome.window_filter"), g_win_filter, (int)sizeof(g_win_filter));
+    int visible = 0;
+    for (int i = 0; i < g_win_n; i++)
+    {
+        if (RowMatchesFilter(g_win_rows[i]))
+            visible++;
+    }
+    if (visible == 0)
+    {
+        ImGui::BeginChild("win_empty", ImVec2(-1.f, -48.f), ImGuiChildFlags_Borders);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        ImGui::TextUnformatted(I18nGet("pe.none"));
+        ImGui::PopStyleColor();
+        ImGui::EndChild();
+    }
+    else if (ImGui::BeginTable("wins", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
+        ImVec2(-1.f, -48.f)))
+    {
+        ImGui::TableSetupColumn(I18nGet("welcome.window_title"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, 72.f);
+        ImGui::TableSetupColumn(I18nGet("welcome.window_image"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < g_win_n; i++)
+        {
+            if (!RowMatchesFilter(g_win_rows[i]))
+                continue;
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::PushID(i);
+            bool sel = (g_win_sel == i);
+            if (ImGui::Selectable(g_win_rows[i].title[0] ? g_win_rows[i].title : "(untitled)", sel,
+                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick))
+            {
+                g_win_sel = i;
+                if (ImGui::IsMouseDoubleClicked(0) && g_win_rows[i].image_path[0])
+                {
+                    AppOpenPath(g_win_rows[i].image_path);
+                    g_win_pick = false;
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::TableNextColumn();
+            ImGui::Text("%lu", (unsigned long)g_win_rows[i].pid);
+            ImGui::TableNextColumn();
+            const char* img = strrchr(g_win_rows[i].image_path, '\\');
+            ImGui::TextUnformatted(img ? img + 1 : (g_win_rows[i].image_path[0] ? g_win_rows[i].image_path : "(access denied)"));
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    bool can = g_win_sel >= 0 && g_win_sel < g_win_n && g_win_rows[g_win_sel].image_path[0];
+    if (UiButton(I18nGet("welcome.analyze")) && can)
+    {
+        AppOpenPath(g_win_rows[g_win_sel].image_path);
+        g_win_pick = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (UiButton(I18nGet("settings.back")))
+    {
+        g_win_pick = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 void AppPrepareFrame()
 {
     ThemeSetCaption(I18nGet("app.title"));
@@ -182,6 +288,8 @@ void AppDraw()
         WelcomeDraw();
         break;
     }
+
+    DrawWindowPicker();
 
     if (!UiAnimEnabled())
     {
