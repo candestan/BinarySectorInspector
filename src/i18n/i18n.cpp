@@ -23,14 +23,12 @@ static nlohmann::json g_strings = nlohmann::json::object();
 static std::map<std::string, std::string> g_map;
 static LangEntry      g_list[kMaxLang];
 static int            g_list_n;
-static char           g_file[64] = "en.json";
-static char           g_name[80] = "English";
+static char           g_file[64];
+static char           g_name[80];
 
 static void LangDir(char* out, int cap)
 {
-    char exe[MAX_PATH];
-    PathsExeDir(exe, MAX_PATH);
-    PathsJoin(out, cap, exe, "languages\\");
+    PathsLanguagesDir(out, cap);
 }
 
 void I18nRescan()
@@ -77,20 +75,24 @@ void I18nRescan()
 void I18nLoadFile(const char* file)
 {
     if (!file || !file[0])
-        file = "en.json";
+    {
+        if (g_list_n <= 0)
+            return;
+        file = g_list[0].file;
+    }
     char dir[MAX_PATH];
     LangDir(dir, MAX_PATH);
     char path[MAX_PATH];
     PathsJoin(path, MAX_PATH, dir, file);
     char* text = nullptr;
-    g_strings = nlohmann::json::object();
-    snprintf(g_file, sizeof(g_file), "%s", file);
-    snprintf(g_name, sizeof(g_name), "%s", file);
     if (PathsReadFile(path, &text, nullptr) && text)
     {
         try
         {
             auto j = nlohmann::json::parse(text);
+            g_strings = nlohmann::json::object();
+            snprintf(g_file, sizeof(g_file), "%s", file);
+            snprintf(g_name, sizeof(g_name), "%s", file);
             if (j.contains("name") && j["name"].is_string())
                 snprintf(g_name, sizeof(g_name), "%s", j["name"].get<std::string>().c_str());
             if (j.contains("strings") && j["strings"].is_object())
@@ -104,7 +106,7 @@ void I18nLoadFile(const char* file)
             for (auto it = g_strings.begin(); it != g_strings.end(); ++it)
             {
                 if (it.value().is_string())
-                    g_map[it.key()] = it.value().get<std::string>(); // copy out; nlohmann value is destroyed with the parse tree.
+                    g_map[it.key()] = it.value().get<std::string>();
             }
             SettingsSetString("language", g_file);
         }
@@ -117,10 +119,13 @@ void I18nLoadFile(const char* file)
 
 void I18nInit()
 {
-    char chosen[64];
-    SettingsGetString("language", chosen, 64, "en.json");
     I18nRescan();
-    I18nLoadFile(chosen);
+    char chosen[64];
+    SettingsGetString("language", chosen, 64, "");
+    if (chosen[0])
+        I18nLoadFile(chosen);
+    if (g_map.empty() && g_list_n > 0)
+        I18nLoadFile(g_list[0].file);
 }
 
 const char* I18nGet(const char* key)

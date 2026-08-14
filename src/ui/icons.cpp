@@ -131,8 +131,9 @@ bool IconButton(const char* id, int icon, const char* label)
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(p, q, ThemeColCard());
     UiHandIfHovered();
-    UiHoverSweep(p, q, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
-    ImU32 col = ImGui::IsItemHovered() ? ThemeColAccent() : ThemeColFg();
+    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered());
+    UiHoverSweep(p, q, ht);
+    ImU32 col = UiLerpCol(ThemeColFg(), ThemeColAccent(), ht);
     IconDraw(icon, ImVec2(p.x + h * 0.5f, p.y + h * 0.5f), h * 0.28f, col);
     if (label)
     {
@@ -150,8 +151,9 @@ bool IconTool(const char* id, int icon, const char* label)
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
     UiHandIfHovered();
-    UiHoverSweep(p, q, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
-    ImU32 col = ImGui::IsItemHovered() ? ThemeColAccent() : ThemeColFg();
+    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered());
+    UiHoverSweep(p, q, ht);
+    ImU32 col = UiLerpCol(ThemeColFg(), ThemeColAccent(), ht);
     IconDraw(icon, ImVec2(p.x + h * 0.42f, p.y + h * 0.5f), h * 0.26f, col);
     if (label)
         ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + h * 0.78f, p.y + (h - ts.y) * 0.5f), col, label);

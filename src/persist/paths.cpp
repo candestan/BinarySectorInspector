@@ -23,6 +23,47 @@ void PathsJoin(char* out, int cap, const char* dir, const char* file)
     snprintf(out, cap, "%s%s", dir ? dir : "", file ? file : "");
 }
 
+void PathsBesideExe(char* out, int cap, const char* relative)
+{
+    char exe[MAX_PATH];
+    PathsExeDir(exe, MAX_PATH);
+    PathsJoin(out, cap, exe, relative ? relative : "");
+}
+
+void PathsThemesDir(char* out, int cap)
+{
+    PathsBesideExe(out, cap, "themes\\");
+}
+
+void PathsLanguagesDir(char* out, int cap)
+{
+    PathsBesideExe(out, cap, "languages\\");
+}
+
+void PathsSettingsFile(char* out, int cap)
+{
+    PathsBesideExe(out, cap, "settings.json");
+}
+
+void PathsAssetFile(char* out, int cap, const char* file)
+{
+    char dir[MAX_PATH];
+    PathsBesideExe(dir, MAX_PATH, "assets\\");
+    PathsJoin(out, cap, dir, file ? file : "");
+}
+
+bool PathsWindowsFont(char* out, int cap, const char* file)
+{
+    if (!out || cap < 8)
+        return false;
+    out[0] = 0;
+    char windir[MAX_PATH];
+    if (!GetWindowsDirectoryA(windir, MAX_PATH) || !file || !file[0])
+        return false;
+    snprintf(out, cap, "%s\\Fonts\\%s", windir, file);
+    return GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES;
+}
+
 bool PathsReadFile(const char* path, char** out_text, int* out_len)
 {
     if (out_text)

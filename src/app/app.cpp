@@ -37,6 +37,7 @@ void AppSetPage(AppPage page)
         return;
     g_page = page;
     g_page_sweep = 0.f;
+    UiAnimPageEnter();
 }
 
 void AppOpenSettings()
@@ -189,15 +190,17 @@ void AppDraw()
     }
     if (g_page_sweep >= 1.f)
         return;
-    g_page_sweep += ImGui::GetIO().DeltaTime * 1.05f; // ~1s wipe. used to snap too fast.
+    g_page_sweep += ImGui::GetIO().DeltaTime * 3.4f;
     if (g_page_sweep > 1.f)
         g_page_sweep = 1.f;
-    float grow = g_page_sweep * 1.15f;
-    if (grow > 1.f)
-        grow = 1.f;
-    float fade = 1.f - g_page_sweep;
+    float e = UiEaseOut(g_page_sweep);
+    float fade = 1.f - e;
     ImVec2 a = ImGui::GetWindowPos();
     ImVec2 b = ImVec2(a.x + ImGui::GetWindowSize().x, a.y + ImGui::GetWindowSize().y);
     ImDrawList* fg = ImGui::GetForegroundDrawList();
-    UiHoverSweep(a, b, grow, fade, fg);
+    fg->AddRectFilled(a, b, ThemeColBgA(fade * 0.55f));
+    float y = a.y + ThemeTitleBarH();
+    float x1 = a.x + (b.x - a.x) * e;
+    fg->AddLine(ImVec2(a.x, y), ImVec2(x1, y), ThemeWithAlpha(ThemeColAccent(), fade), 2.f);
+    UiHoverSweep(a, b, e, fade * 0.65f, fg);
 }

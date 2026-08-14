@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "ui/theme.h"
 #include "ui/icons.h"
+#include "ui/widgets.h"
 #include "persist/settings.h"
 #include "i18n/i18n.h"
 
@@ -13,6 +14,7 @@
 #include <commdlg.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 static const char* kGithubUrl = "https://github.com/candestan/BinarySectorInspector";
 static const char* kAuthorUrl = "https://github.com/candestan";
@@ -82,8 +84,15 @@ void WelcomeDraw()
         logo_s = body_h * 0.12f;
     if (logo_s < 22.f)
         logo_s = 22.f;
-    float logo_y = top + body_h * 0.22f;
-    ThemeDrawLogo(ImVec2(mid_x, logo_y), logo_s);
+    float e0 = UiEnter(0.00f, 0.38f);
+    float e1 = UiEnter(0.06f, 0.40f);
+    float e2 = UiEnter(0.12f, 0.42f);
+    float e3 = UiEnter(0.18f, 0.40f);
+    float breathe = UiAnimEnabled() ? 1.f + 0.025f * sinf((float)ImGui::GetTime() * 1.7f) : 1.f;
+    float logo_y = top + body_h * 0.22f - (1.f - e0) * 10.f;
+    ThemeDrawLogo(ImVec2(mid_x, logo_y), logo_s * (0.82f + 0.18f * e0) * breathe);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, e1);
 
     if (ImFont* title = ThemeFontTitle())
         ImGui::PushFont(title);
@@ -100,13 +109,15 @@ void WelcomeDraw()
     ImGui::SetCursorScreenPos(ImVec2(mid_x - ds.x * 0.5f, logo_y + logo_s + 16.f + ts.y + 4.f));
     ImGui::TextUnformatted(tag);
     ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
 
-    float recents_y = logo_y + logo_s + 16.f + ts.y + ds.y + 28.f;
+    float recents_y = logo_y + logo_s + 16.f + ts.y + ds.y + 28.f + (1.f - e2) * 8.f;
     float recents_w = ws.x - pad * 2.f;
     if (recents_w > 560.f)
         recents_w = 560.f;
     float recents_x = mid_x - recents_w * 0.5f;
 
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, e2);
     ImGui::SetCursorScreenPos(ImVec2(recents_x, recents_y));
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
     ImGui::TextUnformatted(I18nGet("welcome.recents"));
@@ -139,9 +150,9 @@ void WelcomeDraw()
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 18.f);
             if (ImGui::Selectable(FileNameOf(path)))
                 AppOpenPath(path);
+            UiDecorateLastButton();
             if (ImGui::IsItemHovered())
             {
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
                 ImGui::SetTooltip("%s", path);
             }
             ImGui::PopID();
@@ -154,7 +165,9 @@ void WelcomeDraw()
             AppOpenPath(path);
     }
     ImGui::EndChild();
+    ImGui::PopStyleVar();
 
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, e3);
     float fy = wp.y + ws.y - footer_h + 8.f;
     if (ImFont* font_sm = ThemeFontSmall())
         ImGui::PushFont(font_sm);
@@ -198,6 +211,7 @@ void WelcomeDraw()
 
     if (ThemeFontSmall())
         ImGui::PopFont();
+    ImGui::PopStyleVar();
 
     ImGuiWindow* win = ImGui::GetCurrentWindow();
     win->DC.CursorMaxPos = ImVec2(wp.x + ws.x, wp.y + ws.y);

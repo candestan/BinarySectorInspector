@@ -15,6 +15,7 @@
 #include <d3d11.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 enum
 {
@@ -34,11 +35,26 @@ static bool NavTab(const char* id, const char* label, bool selected)
     ImVec2 q = ImGui::GetItemRectMax();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     if (selected)
-        dl->AddRectFilled(p, q, ThemeCol(0x1A1A1A));
+        dl->AddRectFilled(p, q, ThemeColHover());
     UiHandIfHovered();
-    UiHoverSweep(p, q, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
+    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || selected);
+    UiHoverSweep(p, q, ht);
     if (selected)
-        dl->AddRectFilled(p, ImVec2(p.x + 3.f, q.y), ThemeColAccent());
+    {
+        static float bar_y = -1.f, bar_h = 38.f;
+        if (bar_y < 0.f || !UiAnimEnabled())
+        {
+            bar_y = p.y;
+            bar_h = h;
+        }
+        else
+        {
+            float k = 1.f - expf(-18.f * ImGui::GetIO().DeltaTime);
+            bar_y += (p.y - bar_y) * k;
+            bar_h += (h - bar_h) * k;
+        }
+        dl->AddRectFilled(ImVec2(p.x, bar_y), ImVec2(p.x + 3.f, bar_y + bar_h), ThemeColAccent());
+    }
     ImVec2 ts = ImGui::CalcTextSize(label);
     dl->AddText(ImVec2(p.x + 14.f, p.y + (h - ts.y) * 0.5f), selected ? ThemeColFg() : ThemeColMuted(), label);
     return hit;
@@ -84,7 +100,7 @@ static void LangCombo()
         scanned = false;
     }
 
-    float ease = 1.f - (1.f - open_t) * (1.f - open_t);
+    float ease = UiEaseOut(open_t);
     float item_h = ImGui::GetTextLineHeightWithSpacing();
     float full_h = item_h * (float)(I18nCount() > 0 ? I18nCount() : 1) + 12.f;
     ImGui::SetNextWindowPos(ImVec2(btn_p.x, btn_p.y + ImGui::GetFrameHeight() + 4.f), ImGuiCond_Appearing);
@@ -227,7 +243,7 @@ static void DrawThemes()
             dl->AddImage(ImTextureRef((void*)ph), img0, img1);
         }
         else
-            dl->AddRectFilled(img0, img1, ThemeCol(t->preview_card));
+            dl->AddRectFilled(img0, img1, ThemeColRgb(t->preview_card));
         if (active)
             dl->AddRect(img0, img1, ThemeColAccent(), 0.f, 0, 2.f);
 
@@ -257,6 +273,8 @@ static void DrawThemes()
 
 void SettingsPageDraw()
 {
+    float enter = UiEnter(0.f, 0.32f);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.45f + 0.55f * enter);
     if (IconButton("back", IconBack, I18nGet("settings.back")))
         AppSetPage(AppSettingsReturn());
     ImGui::SameLine();
@@ -286,4 +304,5 @@ void SettingsPageDraw()
     else
         DrawGeneral();
     ImGui::EndChild();
+    ImGui::PopStyleVar();
 }

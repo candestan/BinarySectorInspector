@@ -25,3 +25,5 @@ void SettingsSetString(const char* key, const char* val);
 bool SettingsGetString(const char* key, char* out, int cap, const char* def);
 void SettingsSetBool(const char* key, bool val);
 bool SettingsGetBool(const char* key, bool def);
+void SettingsSetInt(const char* key, int val);
+int  SettingsGetInt(const char* key, int def);

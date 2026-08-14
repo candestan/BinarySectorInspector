@@ -15,13 +15,11 @@
 static const int kMaxThemes = 48;
 static ThemeInfo g_list[kMaxThemes];
 static int       g_list_n;
-static char      g_file[64] = "bold-typography.json";
+static char      g_file[64];
 
 static void ThemesDir(char* out, int cap)
 {
-    char exe[MAX_PATH];
-    PathsExeDir(exe, MAX_PATH);
-    PathsJoin(out, cap, exe, "themes\\");
+    PathsThemesDir(out, cap);
 }
 
 static int ParseHex(const nlohmann::json& j, const char* key, int fallback)
@@ -69,9 +67,9 @@ static bool ReadInfo(const char* path, const char* file, ThemeInfo* out)
         snprintf(out->image, sizeof(out->image), "%s", im.c_str());
         out->kind = ParseKind(j);
         auto colors = j.contains("colors") && j["colors"].is_object() ? j["colors"] : j;
-        out->preview_bg = ParseHex(colors, "bg", 0x0A0A0A);
-        out->preview_card = ParseHex(colors, "card", 0x0F0F0F);
-        out->preview_accent = ParseHex(colors, "accent", 0xFF3D00);
+        out->preview_bg = ParseHex(colors, "bg", ThemeHexBg());
+        out->preview_card = ParseHex(colors, "card", ThemeHexCard());
+        out->preview_accent = ParseHex(colors, "accent", ThemeHexAccent());
         ok = true;
     }
     catch (...)
@@ -109,7 +107,11 @@ void ThemePackRescan()
 bool ThemePackApplyFile(const char* file)
 {
     if (!file || !file[0])
-        file = "bold-typography.json";
+    {
+        if (g_list_n <= 0)
+            return false;
+        file = g_list[0].file;
+    }
     char dir[MAX_PATH];
     ThemesDir(dir, MAX_PATH);
     char path[MAX_PATH];
@@ -122,14 +124,14 @@ bool ThemePackApplyFile(const char* file)
     {
         auto j = nlohmann::json::parse(text);
         auto colors = j.contains("colors") && j["colors"].is_object() ? j["colors"] : j;
-        int bg = ParseHex(colors, "bg", 0x0A0A0A);
-        int fg = ParseHex(colors, "fg", 0xFAFAFA);
-        int muted = ParseHex(colors, "muted", 0x1A1A1A);
-        int muted_fg = ParseHex(colors, "muted_fg", 0x737373);
-        int accent = ParseHex(colors, "accent", 0xFF3D00);
-        int border = ParseHex(colors, "border", 0x262626);
-        int input = ParseHex(colors, "input", 0x1A1A1A);
-        int card = ParseHex(colors, "card", 0x0F0F0F);
+        int bg = ParseHex(colors, "bg", ThemeHexBg());
+        int fg = ParseHex(colors, "fg", ThemeHexFg());
+        int muted = ParseHex(colors, "muted", ThemeHexMuted());
+        int muted_fg = ParseHex(colors, "muted_fg", ThemeHexMutedFg());
+        int accent = ParseHex(colors, "accent", ThemeHexAccent());
+        int border = ParseHex(colors, "border", ThemeHexBorder());
+        int input = ParseHex(colors, "input", ThemeHexInput());
+        int card = ParseHex(colors, "card", ThemeHexCard());
         float rounding = j.value("rounding", 0.f);
         ThemeSetPalette(bg, fg, muted, muted_fg, accent, border, input, card, rounding);
         snprintf(g_file, sizeof(g_file), "%s", file);
@@ -146,9 +148,11 @@ bool ThemePackApplyFile(const char* file)
 void ThemePackInit()
 {
     char chosen[64];
-    SettingsGetString("theme", chosen, 64, "bold-typography.json");
+    SettingsGetString("theme", chosen, 64, "");
     ThemePackRescan();
-    if (!ThemePackApplyFile(chosen) && g_list_n > 0)
+    if (chosen[0] && ThemePackApplyFile(chosen))
+        return;
+    if (g_list_n > 0)
         ThemePackApplyFile(g_list[0].file);
 }
 

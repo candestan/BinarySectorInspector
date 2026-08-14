@@ -1,5 +1,6 @@
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "persist/paths.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -30,17 +31,50 @@ static ImFont* g_font_title;
 static ImFont* g_font_small;
 static ImFont* g_font_mono;
 
-ImU32 ThemeCol(int hex, float a)
+static ImU32 Col(int hex, float a)
 {
     return ImGui::ColorConvertFloat4ToU32(T(hex, a));
 }
 
-ImU32 ThemeColFg() { return ThemeCol(kFg); }
-ImU32 ThemeColMuted() { return ThemeCol(kMutedFg); }
-ImU32 ThemeColAccent() { return ThemeCol(kAccent); }
-ImU32 ThemeColBg() { return ThemeCol(kBg); }
-ImU32 ThemeColCard() { return ThemeCol(kCard); }
-ImU32 ThemeColBorder() { return ThemeCol(kBorder); }
+ImU32 ThemeWithAlpha(ImU32 c, float a)
+{
+    if (a < 0.f)
+        a = 0.f;
+    if (a > 1.f)
+        a = 1.f;
+    return (c & 0x00ffffff) | ((ImU32)(a * 255.f + 0.5f) << 24);
+}
+
+ImU32 ThemeColRgb(int rgb, float a)
+{
+    return Col(rgb, a);
+}
+
+ImU32 ThemeColFg() { return Col(kFg, 1.f); }
+ImU32 ThemeColFgA(float a) { return Col(kFg, a); }
+ImU32 ThemeColMuted() { return Col(kMutedFg, 1.f); }
+ImU32 ThemeColMutedA(float a) { return Col(kMutedFg, a); }
+ImU32 ThemeColAccent() { return Col(kAccent, 1.f); }
+ImU32 ThemeColAccentA(float a) { return Col(kAccent, a); }
+ImU32 ThemeColBg() { return Col(kBg, 1.f); }
+ImU32 ThemeColBgA(float a) { return Col(kBg, a); }
+ImU32 ThemeColCard() { return Col(kCard, 1.f); }
+ImU32 ThemeColCardA(float a) { return Col(kCard, a); }
+ImU32 ThemeColBorder() { return Col(kBorder, 1.f); }
+ImU32 ThemeColBorderA(float a) { return Col(kBorder, a); }
+ImU32 ThemeColHover() { return Col(kMuted, 1.f); }
+ImU32 ThemeColHoverA(float a) { return Col(kMuted, a); }
+ImU32 ThemeColInput() { return Col(kInput, 1.f); }
+ImVec4 ThemeVec4Transparent() { return T(kBg, 0.f); }
+
+int ThemeHexBg() { return kBg; }
+int ThemeHexFg() { return kFg; }
+int ThemeHexMuted() { return kMuted; }
+int ThemeHexMutedFg() { return kMutedFg; }
+int ThemeHexAccent() { return kAccent; }
+int ThemeHexBorder() { return kBorder; }
+int ThemeHexInput() { return kInput; }
+int ThemeHexCard() { return kCard; }
 
 void ThemeSetCaption(const char* caption)
 {
@@ -79,18 +113,28 @@ void ThemeLoadFonts()
     fc.OversampleV = 1;
     fc.PixelSnapH = false;
     fc.RasterizerDensity = 1.0f; // 2.0 was crunchy. this is not MSAA.
-    const char* path = "C:\\Windows\\Fonts\\segoeui.ttf";
-    const char* title_path = "C:\\Windows\\Fonts\\seguisb.ttf";
-    if (GetFileAttributesA(title_path) == INVALID_FILE_ATTRIBUTES)
-        title_path = path;
-    if (ImFont* body = io.Fonts->AddFontFromFileTTF(path, ThemeFontSize(), &fc))
-        io.FontDefault = body;
-    g_font_title = io.Fonts->AddFontFromFileTTF(title_path, 28.0f, &fc);
-    g_font_small = io.Fonts->AddFontFromFileTTF(path, 16.0f, &fc);
-    const char* mono_path = "C:\\Windows\\Fonts\\consola.ttf";
-    if (GetFileAttributesA(mono_path) == INVALID_FILE_ATTRIBUTES)
-        mono_path = path;
-    g_font_mono = io.Fonts->AddFontFromFileTTF(mono_path, 16.0f, &fc);
+    char body[MAX_PATH];
+    char title[MAX_PATH];
+    char mono[MAX_PATH];
+    bool have_body = PathsWindowsFont(body, MAX_PATH, "segoeui.ttf");
+    bool have_title = PathsWindowsFont(title, MAX_PATH, "seguisb.ttf");
+    bool have_mono = PathsWindowsFont(mono, MAX_PATH, "consola.ttf");
+    if (have_body)
+    {
+        if (ImFont* f = io.Fonts->AddFontFromFileTTF(body, ThemeFontSize(), &fc))
+            io.FontDefault = f;
+        g_font_small = io.Fonts->AddFontFromFileTTF(body, 16.0f, &fc);
+    }
+    else
+        io.FontDefault = io.Fonts->AddFontDefault();
+    if (have_title)
+        g_font_title = io.Fonts->AddFontFromFileTTF(title, 28.0f, &fc);
+    else if (have_body)
+        g_font_title = io.Fonts->AddFontFromFileTTF(body, 28.0f, &fc);
+    if (have_mono)
+        g_font_mono = io.Fonts->AddFontFromFileTTF(mono, 16.0f, &fc);
+    else if (have_body)
+        g_font_mono = io.Fonts->AddFontFromFileTTF(body, 16.0f, &fc);
 }
 
 void ThemeDrawLogo(ImVec2 c, float s)
@@ -138,7 +182,7 @@ void ThemeApply()
     c[ImGuiCol_ChildBg]               = T(kCard);
     c[ImGuiCol_PopupBg]               = T(kMuted);
     c[ImGuiCol_Border]                = T(kBorder);
-    c[ImGuiCol_BorderShadow]          = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_BorderShadow]          = T(kBg, 0.f);
     c[ImGuiCol_FrameBg]               = T(kInput);
     c[ImGuiCol_FrameBgHovered]        = T(kMuted);
     c[ImGuiCol_FrameBgActive]         = T(kMuted);

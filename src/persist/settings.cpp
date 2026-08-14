@@ -1,4 +1,5 @@
 #include "persist/settings.h"
+#include "persist/paths.h"
 
 #include <windows.h>
 #include <fstream>
@@ -13,10 +14,7 @@ static char           g_path[MAX_PATH];
 
 static void SettingsPath()
 {
-    GetModuleFileNameA(nullptr, g_path, MAX_PATH);
-    char* slash = strrchr(g_path, '\\');
-    if (slash)
-        snprintf(slash + 1, MAX_PATH - (int)(slash + 1 - g_path), "settings.json");
+    PathsSettingsFile(g_path, MAX_PATH);
 }
 
 nlohmann::json& SettingsRoot()
@@ -171,5 +169,24 @@ bool SettingsGetBool(const char* key, bool def)
         return def;
     if (g_doc[key].is_boolean())
         return g_doc[key].get<bool>();
+    return def;
+}
+
+void SettingsSetInt(const char* key, int val)
+{
+    if (!key || !key[0])
+        return;
+    g_doc[key] = val;
+    SettingsSave();
+}
+
+int SettingsGetInt(const char* key, int def)
+{
+    if (!key || !g_doc.contains(key))
+        return def;
+    if (g_doc[key].is_number_integer())
+        return g_doc[key].get<int>();
+    if (g_doc[key].is_number())
+        return (int)g_doc[key].get<double>();
     return def;
 }

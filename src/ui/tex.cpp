@@ -171,10 +171,8 @@ ID3D11ShaderResourceView* TexPlaceholder()
 {
     if (g_placeholder)
         return g_placeholder;
-    char exe[MAX_PATH];
     char path[MAX_PATH];
-    PathsExeDir(exe, MAX_PATH);
-    PathsJoin(path, MAX_PATH, exe, "assets\\placeholder.png");
+    PathsAssetFile(path, MAX_PATH, "placeholder.png");
     TexLoadFile(path, &g_placeholder, &g_ph_w, &g_ph_h);
     return g_placeholder;
 }

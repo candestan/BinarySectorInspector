@@ -298,7 +298,8 @@ void EndForm()
     ImGui::End();
     ImGui::Render();
 
-    const float clear[4] = { 0.f, 0.f, 0.f, 0.f };
+    ImVec4 clear4 = ThemeVec4Transparent();
+    const float clear[4] = { clear4.x, clear4.y, clear4.z, clear4.w };
     g_ctx->OMSetRenderTargets(1, &f->rtv, nullptr);
     g_ctx->ClearRenderTargetView(f->rtv, clear);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
