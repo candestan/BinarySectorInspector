@@ -1,0 +1,28 @@
+BinarySectorInspector Attribution-NonSale License
+Copyright (c) 2026 candestan
+
+You are free to use, copy, modify, and fork this software, including
+inside a company or other organization, provided that all of the
+following conditions are met:
+
+1. Attribution.
+   You must credit the author as "candestan" and the project as
+   "BinarySectorInspector" in the source, in documentation, and in
+   any public copy or fork. Do not present this work as your original
+   project. Internal-only use is enough if this license and copyright
+   notice stay in the source.
+
+2. No sale.
+   You may not sell this software, or any modified version of it,
+   as a product or as part of a paid product or paid service.
+   Using it as an internal tool (including at a company) is allowed.
+
+3. Same license.
+   Forks and modified versions must keep this license text and the
+   copyright notice above.
+
+This license covers the BinarySectorInspector project code only.
+Third-party code (including Dear ImGui under third_party/) stays
+under its own licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
