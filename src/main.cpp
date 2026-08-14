@@ -1,3 +1,4 @@
+#include "app.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
@@ -5,6 +6,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <dcomp.h>
+#include <objbase.h>
 #include <windows.h>
 
 #pragma comment(lib, "d3d11.lib")
@@ -150,6 +152,8 @@ static LRESULT WINAPI WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
 {
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
     bool force_sw = false;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -200,6 +204,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_ctx);
 
+    App app(hwnd);
+
     bool running = true;
     while (running)
     {
@@ -218,11 +224,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::SetNextWindowPos(ImVec2(48.f, 48.f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(420.f, 260.f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("BinarySectorInspector");
-        ImGui::TextUnformatted("ui guidelines gelince burayi degistiririz");
-        ImGui::End();
+        app.draw();
 
         ImGui::Render();
 
@@ -239,5 +241,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
     KillGfx();
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, inst);
+    CoUninitialize();
     return 0;
 }
