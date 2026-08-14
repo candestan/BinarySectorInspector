@@ -21,6 +21,7 @@ void   ThemeSetCaption(const char* caption);
 const char* ThemeCaptionOr(const char* fallback);
 ImFont* ThemeFontTitle();
 ImFont* ThemeFontSmall();
+ImFont* ThemeFontMono();
 ImU32  ThemeCol(int hex, float a = 1.f);
 ImU32  ThemeColFg();
 ImU32  ThemeColMuted();

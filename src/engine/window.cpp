@@ -62,6 +62,7 @@ static int FrameY()
 LRESULT HandleNcCalcSize(HWND hwnd, WPARAM wp, LPARAM lp)
 {
     // client = full window. DefWindowProc on wParam=FALSE restores native caption.
+    // credit: https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize
     if (!wp)
         return 0;
 

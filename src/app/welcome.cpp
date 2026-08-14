@@ -7,6 +7,7 @@
 #include "i18n/i18n.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <windows.h>
 #include <commdlg.h>
@@ -174,7 +175,7 @@ void WelcomeDraw()
     ImGui::Dummy(ImVec2(16.f, 1.f));
     ImGui::SameLine();
     if (IconButton("settings", IconGear, I18nGet("welcome.settings")))
-        AppSetPage(AppPageSettings);
+        AppOpenSettings();
 
     if (kWelcomeQuoteCount > 0)
     {
@@ -197,4 +198,8 @@ void WelcomeDraw()
 
     if (ThemeFontSmall())
         ImGui::PopFont();
+
+    ImGuiWindow* win = ImGui::GetCurrentWindow();
+    win->DC.CursorMaxPos = ImVec2(wp.x + ws.x, wp.y + ws.y);
+    win->DC.IdealMaxPos = win->DC.CursorMaxPos;
 }

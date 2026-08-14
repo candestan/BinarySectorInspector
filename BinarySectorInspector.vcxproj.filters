@@ -13,6 +13,12 @@
     <Filter Include="i18n">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000006}</UniqueIdentifier>
     </Filter>
+    <Filter Include="persist">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pe">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000007}</UniqueIdentifier>
+    </Filter>
     <Filter Include="third_party">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000005}</UniqueIdentifier>
     </Filter>
@@ -28,6 +34,9 @@
       <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="src\app\settings_page.cpp">
+      <Filter>app</Filter>
+    </ClCompile>
+    <ClCompile Include="src\app\inspector.cpp">
       <Filter>app</Filter>
     </ClCompile>
     <ClCompile Include="src\engine\engine.cpp">
@@ -66,6 +75,9 @@
     <ClCompile Include="src\persist\paths.cpp">
       <Filter>persist</Filter>
     </ClCompile>
+    <ClCompile Include="src\pe\pe.cpp">
+      <Filter>pe</Filter>
+    </ClCompile>
     <ClCompile Include="third_party\imgui\imgui.cpp">
       <Filter>third_party</Filter>
     </ClCompile>
@@ -98,6 +110,9 @@
     <ClInclude Include="src\app\settings_page.h">
       <Filter>app</Filter>
     </ClInclude>
+    <ClInclude Include="src\app\inspector.h">
+      <Filter>app</Filter>
+    </ClInclude>
     <ClInclude Include="src\engine\engine.h">
       <Filter>engine</Filter>
     </ClInclude>
@@ -128,5 +143,19 @@
     <ClInclude Include="src\persist\paths.h">
       <Filter>persist</Filter>
     </ClInclude>
+    <ClInclude Include="src\pe\pe.h">
+      <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\resource.h">
+      <Filter>app</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui_club\imgui_memory_editor\imgui_memory_editor.h">
+      <Filter>third_party</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\app\app.rc">
+      <Filter>app</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

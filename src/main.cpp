@@ -51,6 +51,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
         EngineEndFrame();
     }
 
+    AppShutdown();
     EngineShutdown();
     return 0;
 }

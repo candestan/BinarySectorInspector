@@ -28,6 +28,7 @@ static char g_caption[128];
 
 static ImFont* g_font_title;
 static ImFont* g_font_small;
+static ImFont* g_font_mono;
 
 ImU32 ThemeCol(int hex, float a)
 {
@@ -68,6 +69,7 @@ void ThemeSetPalette(int bg, int fg, int muted, int muted_fg, int accent, int bo
 
 ImFont* ThemeFontTitle() { return g_font_title; }
 ImFont* ThemeFontSmall() { return g_font_small; }
+ImFont* ThemeFontMono() { return g_font_mono; }
 
 void ThemeLoadFonts()
 {
@@ -85,6 +87,10 @@ void ThemeLoadFonts()
         io.FontDefault = body;
     g_font_title = io.Fonts->AddFontFromFileTTF(title_path, 28.0f, &fc);
     g_font_small = io.Fonts->AddFontFromFileTTF(path, 16.0f, &fc);
+    const char* mono_path = "C:\\Windows\\Fonts\\consola.ttf";
+    if (GetFileAttributesA(mono_path) == INVALID_FILE_ATTRIBUTES)
+        mono_path = path;
+    g_font_mono = io.Fonts->AddFontFromFileTTF(mono_path, 16.0f, &fc);
 }
 
 void ThemeDrawLogo(ImVec2 c, float s)

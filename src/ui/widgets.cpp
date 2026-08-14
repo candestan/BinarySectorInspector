@@ -23,11 +23,12 @@ float UiHoverT(unsigned int id, bool hovered)
     return t;
 }
 
-void UiHoverSweep(ImVec2 a, ImVec2 b, float t, float alpha_scale)
+void UiHoverSweep(ImVec2 a, ImVec2 b, float t, float alpha_scale, ImDrawList* dl)
 {
     if (t <= 0.001f || alpha_scale <= 0.001f)
         return;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (!dl)
+        dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(a, b, true);
     float reach = t * ((b.x - a.x) + (b.y - a.y) + 8.f); // BL->TR fill, clipped to item.
     ImU32 col = ThemeColAccent();
@@ -73,4 +74,59 @@ bool UiButton(const char* label, ImVec2 size)
     UiHoverSweep(p, q, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
     dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f), ThemeColFg(), label);
     return hit;
+}
+
+bool UiCheckbox(const char* id, const char* label, bool* value)
+{
+    if (!value)
+        return false;
+    ImGui::PushID(id ? id : "chk");
+    float h = ImGui::GetFrameHeight();
+    float box = h - 8.f;
+    ImVec2 ts = ImGui::CalcTextSize(label ? label : "");
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float w = box + 10.f + ts.x + 4.f;
+    bool hit = ImGui::InvisibleButton("hit", ImVec2(w, h));
+    if (hit)
+        *value = !*value;
+    UiHandIfHovered();
+    ImVec2 q = ImGui::GetItemRectMax();
+    UiHoverSweep(p, q, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
+
+    float bx = p.x + 2.f;
+    float by = p.y + (h - box) * 0.5f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(ImVec2(bx, by), ImVec2(bx + box, by + box), ThemeColCard());
+    dl->AddRect(ImVec2(bx, by), ImVec2(bx + box, by + box), ThemeColBorder());
+    if (*value)
+    {
+        ImU32 acc = ThemeColAccent();
+        dl->AddLine(ImVec2(bx + 3.f, by + box * 0.55f), ImVec2(bx + box * 0.42f, by + box - 3.f), acc, 2.f);
+        dl->AddLine(ImVec2(bx + box * 0.42f, by + box - 3.f), ImVec2(bx + box - 3.f, by + 3.f), acc, 2.f);
+    }
+    dl->AddText(ImVec2(bx + box + 8.f, p.y + (h - ts.y) * 0.5f), ThemeColFg(), label ? label : "");
+    ImGui::PopID();
+    return hit;
+}
+
+void UiSpinner(ImVec2 center, float radius, float progress)
+{
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float pi = 3.14159265f;
+    dl->AddCircle(center, radius, ThemeColBorder(), 48, 3.f);
+    float t = (float)ImGui::GetTime();
+    float a0;
+    float a1;
+    if (progress >= 0.f && progress <= 1.f)
+    {
+        a0 = -pi * 0.5f;
+        a1 = a0 + progress * pi * 2.f;
+    }
+    else
+    {
+        a0 = t * 4.2f;
+        a1 = a0 + pi * 1.35f;
+    }
+    dl->PathArcTo(center, radius, a0, a1, 32);
+    dl->PathStroke(ThemeColAccent(), 0, 3.f);
 }

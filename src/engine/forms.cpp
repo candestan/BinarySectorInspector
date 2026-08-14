@@ -185,6 +185,8 @@ Form* SpawnForm(const char* name, int w, int h)
     f->min_h = kMinWindow;
 
     // NOREDIRECTIONBITMAP + DComp. DWM redirect bitmap kills alpha.
+    // credit: https://learn.microsoft.com/en-us/windows/win32/directcomp/directcomposition-portal
+    // credit: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw (WS_EX_NOREDIRECTIONBITMAP)
     HWND hwnd = CreateWindowExW(
         WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW,
         L"BSIHost",
@@ -269,7 +271,8 @@ bool BeginForm(const char* name, bool* open, ImVec2 init_size, bool is_main)
     ImGui::SetNextWindowSize(client, ImGuiCond_Always);
 
     ImGuiWindowFlags wf = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground;
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
     ImGui::Begin(name, nullptr, wf);
     int chrome = ThemeDecorateWindow(ThemeCaptionOr(name), f->maximized);

@@ -5,6 +5,7 @@
 #include "i18n/i18n.h"
 
 #include <nlohmann/json.hpp>
+// credit: https://github.com/nlohmann/json (MIT, third_party/nlohmann_json)
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>

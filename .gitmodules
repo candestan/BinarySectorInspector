@@ -4,3 +4,6 @@
 [submodule "third_party/nlohmann_json"]
 	path = third_party/nlohmann_json
 	url = https://github.com/nlohmann/json.git
+[submodule "third_party/imgui_club"]
+	path = third_party/imgui_club
+	url = https://github.com/ocornut/imgui_club.git

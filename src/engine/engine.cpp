@@ -2,6 +2,7 @@
 #include "engine/engine_p.h"
 #include "persist/settings.h"
 #include "ui/tex.h"
+#include "app/resource.h"
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -142,6 +143,9 @@ bool EngineInit(HINSTANCE inst, bool force_sw)
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = HostWndProc;
     wc.hInstance = inst;
+    wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(IDI_APP));
+    wc.hIconSm = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(IDI_APP), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = L"BSIHost";
     if (!RegisterClassExW(&wc))

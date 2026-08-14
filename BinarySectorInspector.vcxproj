@@ -46,14 +46,21 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -62,10 +69,14 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -73,12 +84,16 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\app\app.cpp" />
     <ClCompile Include="src\app\welcome.cpp" />
     <ClCompile Include="src\app\settings_page.cpp" />
+    <ClCompile Include="src\app\inspector.cpp" />
     <ClCompile Include="src\engine\engine.cpp" />
     <ClCompile Include="src\engine\device.cpp" />
     <ClCompile Include="src\engine\window.cpp" />
@@ -91,6 +106,7 @@
     <ClCompile Include="src\i18n\i18n.cpp" />
     <ClCompile Include="src\persist\settings.cpp" />
     <ClCompile Include="src\persist\paths.cpp" />
+    <ClCompile Include="src\pe\pe.cpp" />
     <ClCompile Include="third_party\imgui\imgui.cpp" />
     <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
     <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
@@ -103,6 +119,7 @@
     <ClInclude Include="src\app\welcome.h" />
     <ClInclude Include="src\app\quotes.h" />
     <ClInclude Include="src\app\settings_page.h" />
+    <ClInclude Include="src\app\inspector.h" />
     <ClInclude Include="src\engine\engine.h" />
     <ClInclude Include="src\engine\engine_p.h" />
     <ClInclude Include="src\ui\theme.h" />
@@ -113,10 +130,16 @@
     <ClInclude Include="src\i18n\i18n.h" />
     <ClInclude Include="src\persist\settings.h" />
     <ClInclude Include="src\persist\paths.h" />
+    <ClInclude Include="src\pe\pe.h" />
+    <ClInclude Include="src\app\resource.h" />
     <ClInclude Include="third_party\imgui\imgui.h" />
+    <ClInclude Include="third_party\imgui_club\imgui_memory_editor\imgui_memory_editor.h" />
     <ClInclude Include="third_party\imgui\imconfig.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_dx11.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\app\app.rc" />
   </ItemGroup>
   <ItemGroup>
     <LanguageJson Include="languages\*.json" />

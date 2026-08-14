@@ -6,6 +6,8 @@
 #include <string.h>
 #include <string>
 
+// credit: https://github.com/nlohmann/json (MIT, third_party/nlohmann_json)
+
 static nlohmann::json g_doc = nlohmann::json::object();
 static char           g_path[MAX_PATH];
 

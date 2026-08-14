@@ -127,17 +127,17 @@ static void DrawPerformance()
     ImGui::Spacing();
 
     bool disable_anim = !SettingsGetBool("animations", true);
-    if (ImGui::Checkbox(I18nGet("settings.disable_animations"), &disable_anim))
+    if (UiCheckbox("anim", I18nGet("settings.disable_animations"), &disable_anim))
         SettingsSetBool("animations", !disable_anim);
 
     bool vsync = EngineVsync();
-    if (ImGui::Checkbox(I18nGet("settings.vsync"), &vsync))
+    if (UiCheckbox("vsync", I18nGet("settings.vsync"), &vsync))
         EngineSetVsync(vsync);
 
     bool msaa = EngineMsaaEnabled();
     if (EngineIsSoftware())
         ImGui::BeginDisabled();
-    if (ImGui::Checkbox(I18nGet("settings.msaa"), &msaa))
+    if (UiCheckbox("msaa", I18nGet("settings.msaa"), &msaa))
     {
         SettingsSetBool("msaa", msaa);
         EngineRequestMsaa(msaa);
@@ -258,7 +258,7 @@ static void DrawThemes()
 void SettingsPageDraw()
 {
     if (IconButton("back", IconBack, I18nGet("settings.back")))
-        AppSetPage(AppPageWelcome);
+        AppSetPage(AppSettingsReturn());
     ImGui::SameLine();
     if (ImFont* title = ThemeFontTitle())
         ImGui::PushFont(title);
