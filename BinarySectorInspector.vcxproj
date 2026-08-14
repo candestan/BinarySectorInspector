@@ -43,51 +43,70 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;ole32.lib;uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\app;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;ole32.lib;uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <Manifest>
+      <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
-    <ClCompile Include="src\app.cpp" />
-    <ClCompile Include="src\platform\utf8.cpp" />
-    <ClCompile Include="src\platform\file_picker.cpp" />
-    <ClCompile Include="src\platform\window_process.cpp" />
-    <ClCompile Include="src\pe\pe_file.cpp" />
-    <ClCompile Include="src\pe\pe_headers.cpp" />
-    <ClCompile Include="src\pe\pe_address.cpp" />
-    <ClCompile Include="src\pe\pe_directories.cpp" />
-    <ClCompile Include="src\pe\pe_analysis.cpp" />
-    <ClCompile Include="src\pe\pe_image.cpp" />
-    <ClCompile Include="src\ui\open_target_dialog.cpp" />
-    <ClCompile Include="src\ui\inspector.cpp" />
+    <ClCompile Include="src\app\app.cpp" />
+    <ClCompile Include="src\app\welcome.cpp" />
+    <ClCompile Include="src\app\settings_page.cpp" />
+    <ClCompile Include="src\app\inspector.cpp" />
+    <ClCompile Include="src\engine\engine.cpp" />
+    <ClCompile Include="src\engine\device.cpp" />
+    <ClCompile Include="src\engine\window.cpp" />
+    <ClCompile Include="src\engine\forms.cpp" />
+    <ClCompile Include="src\ui\theme.cpp" />
+    <ClCompile Include="src\ui\theme_pack.cpp" />
+    <ClCompile Include="src\ui\tex.cpp" />
+    <ClCompile Include="src\ui\icons.cpp" />
+    <ClCompile Include="src\ui\widgets.cpp" />
+    <ClCompile Include="src\i18n\i18n.cpp" />
+    <ClCompile Include="src\persist\settings.cpp" />
+    <ClCompile Include="src\persist\paths.cpp" />
+    <ClCompile Include="src\pe\pe.cpp" />
     <ClCompile Include="third_party\imgui\imgui.cpp" />
     <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
     <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
@@ -96,24 +115,42 @@
     <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\app.h" />
-    <ClInclude Include="src\platform\unique_handle.h" />
-    <ClInclude Include="src\platform\utf8.h" />
-    <ClInclude Include="src\platform\file_picker.h" />
-    <ClInclude Include="src\platform\window_process.h" />
-    <ClInclude Include="src\pe\pe_types.h" />
-    <ClInclude Include="src\pe\pe_file.h" />
-    <ClInclude Include="src\pe\pe_headers.h" />
-    <ClInclude Include="src\pe\pe_address.h" />
-    <ClInclude Include="src\pe\pe_directories.h" />
-    <ClInclude Include="src\pe\pe_analysis.h" />
-    <ClInclude Include="src\pe\pe_image.h" />
-    <ClInclude Include="src\ui\open_target_dialog.h" />
-    <ClInclude Include="src\ui\inspector.h" />
+    <ClInclude Include="src\app\app.h" />
+    <ClInclude Include="src\app\welcome.h" />
+    <ClInclude Include="src\app\quotes.h" />
+    <ClInclude Include="src\app\settings_page.h" />
+    <ClInclude Include="src\app\inspector.h" />
+    <ClInclude Include="src\engine\engine.h" />
+    <ClInclude Include="src\engine\engine_p.h" />
+    <ClInclude Include="src\ui\theme.h" />
+    <ClInclude Include="src\ui\theme_pack.h" />
+    <ClInclude Include="src\ui\tex.h" />
+    <ClInclude Include="src\ui\icons.h" />
+    <ClInclude Include="src\ui\widgets.h" />
+    <ClInclude Include="src\i18n\i18n.h" />
+    <ClInclude Include="src\persist\settings.h" />
+    <ClInclude Include="src\persist\paths.h" />
+    <ClInclude Include="src\pe\pe.h" />
+    <ClInclude Include="src\app\resource.h" />
     <ClInclude Include="third_party\imgui\imgui.h" />
+    <ClInclude Include="third_party\imgui_club\imgui_memory_editor\imgui_memory_editor.h" />
     <ClInclude Include="third_party\imgui\imconfig.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_dx11.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\app\app.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <LanguageJson Include="languages\*.json" />
+    <ThemeJson Include="themes\*.json" />
+    <AssetFiles Include="assets\*" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CopyLangAndThemes" AfterTargets="Build">
+    <MakeDir Directories="$(OutDir)languages;$(OutDir)themes;$(OutDir)assets" />
+    <Copy SourceFiles="@(LanguageJson)" DestinationFolder="$(OutDir)languages" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ThemeJson)" DestinationFolder="$(OutDir)themes" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(OutDir)assets" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

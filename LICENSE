@@ -22,7 +22,11 @@ following conditions are met:
    copyright notice above.
 
 This license covers the BinarySectorInspector project code only.
-Third-party code (including Dear ImGui under third_party/) stays
-under its own licenses.
+Third-party code stays under its own licenses:
+  Dear ImGui  — third_party/imgui          https://github.com/ocornut/imgui
+  imgui_club  — third_party/imgui_club     https://github.com/ocornut/imgui_club
+  nlohmann/json — third_party/nlohmann_json https://github.com/nlohmann/json
+Snippet credits (Rich header, DIE-style heuristics, MSFT typelib, DComp, etc.)
+are in-source as `credit: <url>` comments.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
