@@ -87,7 +87,7 @@ static bool BootGfx(HWND hwnd, UINT w, UINT h, bool force_sw)
     sd.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
     sd.Scaling = DXGI_SCALING_STRETCH;
 
-    HRESULT hr = factory->CreateSwapChainForComposition(g_device, &sd, nullptr, &g_swap);
+    hr = factory->CreateSwapChainForComposition(g_device, &sd, nullptr, &g_swap);
     factory->Release();
     adapter->Release();
     if (FAILED(hr))
