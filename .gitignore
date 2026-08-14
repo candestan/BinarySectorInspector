@@ -21,3 +21,10 @@ ipch/
 imgui.ini
 out/
 build/
+bin/
+obj/
+*.exe
+*.dll
+*.appx
+*.ipch
+settings.json
