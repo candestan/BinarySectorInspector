@@ -20,7 +20,7 @@ No project reference, no `#include` of plugin code, no rebuild of the inspector.
 2. Export `BsiPluginGetInfo`, `BsiPluginInit`, `BsiPluginShutdown`.
 3. Build a DLL (`/MD` or `/MT` does not matter; do not link ImGui or the host).
 4. Copy the DLL to `{exe}/plugins/` (or a one-level subfolder).
-5. Start BinarySectorInspector. Settings → Plugins shows the id, enable toggle, and optional settings UI.
+5. Start BinarySectorInspector. Settings → Plugins shows a card per DLL (search/filter by name, package id, author). Optional icon/cover paths come from `BsiPluginVisuals`, `plugin.json` / `tool.json`, or `icon.png` / `cover.png` next to the DLL.
 
 `sdk/plugin/skeleton.c` is a minimal compilable example.
 
@@ -53,6 +53,7 @@ The host loads a plugin when `BSI_PLUGIN_ABI_MIN <= info->abi_version <= BSI_PLU
 | `BsiPluginViewCount/Info/Draw` | no | Inspector tree views |
 | `BsiPluginHasSettings` / `DrawSettings` | no | Settings → Plugins |
 | `BsiPluginOnJob` | no | `ready=1` after a PE parses, `0` when closed or failed |
+| `BsiPluginVisuals` | no | Local `icon` / `cover` paths for the Settings card |
 
 Draw callbacks run on the UI thread. Do not link ImGui; use `BsiUi`.
 
@@ -73,6 +74,30 @@ Draw callbacks run on the UI thread. Do not link ImGui; use `BsiUi`.
 `job_ready` is true when a PE is open and idle. `image` is the mapped file bytes. `has_product` uses detection `product_key` (for example `py2exe`). `has_media` / `artifact_*` walk analysis artifacts by media string (for example `python.bytecode`). `has_rsrc_name` matches a resource leaf name.
 
 Additive queries: `detection_*`, `rsrc_*`, `section_*`, `hex_goto` / `hex_select`, `open_job`.
+
+## Card visuals
+
+Settings → Plugins draws one card per loaded DLL. Art is optional and **local only** (no HTTP).
+
+Resolution order for `icon` and `cover`:
+
+1. `BsiPluginVisuals()` (`icon` / `cover`, relative to the DLL folder or absolute)
+2. `plugin.json` or `tool.json` next to the DLL (`"icon"`, `"cover"`)
+3. `icon.png` / `icon.jpg` / `cover.png` / `cover.jpg` next to the DLL
+
+`..` and `http(s):` paths are rejected. Missing art uses the host placeholder.
+
+```c
+BSI_PLUGIN_EXPORT const struct BsiVisuals* BsiPluginVisuals(void)
+{
+    static const struct BsiVisuals v = {
+        (uint32_t)sizeof(struct BsiVisuals),
+        "icon.png",
+        "cover.png"
+    };
+    return &v;
+}
+```
 
 ## Settings and JSON
 

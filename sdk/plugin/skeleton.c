@@ -66,3 +66,15 @@ BSI_PLUGIN_EXPORT void BsiPluginOnJob(int ready)
         return;
     g_host->log(g_host->ctx, BsiSevDebug, "skeleton", ready ? "Job ready" : "Job closed");
 }
+
+/* Optional card art: return local paths relative to the DLL.
+BSI_PLUGIN_EXPORT const struct BsiVisuals* BsiPluginVisuals(void)
+{
+    static const struct BsiVisuals v = {
+        (uint32_t)sizeof(struct BsiVisuals),
+        "icon.png",
+        "cover.png"
+    };
+    return &v;
+}
+*/

@@ -1,11 +1,12 @@
 #include <windows.h>
 #include "resource.h"
+#include "version.h"
 
 IDI_APP ICON "..\\..\\assets\\app.ico"
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
+FILEVERSION BSI_VERSION_MAJOR,BSI_VERSION_MINOR,BSI_VERSION_PATCH,BSI_BUILD_NUMBER
+PRODUCTVERSION BSI_VERSION_MAJOR,BSI_VERSION_MINOR,BSI_VERSION_PATCH,BSI_BUILD_NUMBER
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
 FILEFLAGS VS_FF_DEBUG
@@ -22,12 +23,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "candestan"
             VALUE "FileDescription", "Binary Sector Inspector"
-            VALUE "FileVersion", "0.1.0.0"
+            VALUE "FileVersion", BSI_VERSION_DOTTED
             VALUE "InternalName", "BinarySectorInspector"
             VALUE "LegalCopyright", "Copyright (c) 2026 candestan"
             VALUE "OriginalFilename", "BinarySectorInspector.exe"
             VALUE "ProductName", "BinarySectorInspector"
-            VALUE "ProductVersion", "0.1.0.0"
+            VALUE "ProductVersion", BSI_VERSION_STRING
             VALUE "Comments", "Inspect binaries, a more modern way."
         END
     END

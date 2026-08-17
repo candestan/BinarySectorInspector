@@ -14,14 +14,23 @@
 #include "plugin/plugin.h"
 #include "runtime/scripting.h"
 #include "pe/pe.h"
+#include "app/version.h"
 
 #include "imgui.h"
 
 #include <windows.h>
+#include <shellapi.h>
+#include <winhttp.h>
 #include <d3d11.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <thread>
+#include <vector>
+#include <mutex>
+#include <atomic>
+
+#pragma comment(lib, "winhttp.lib")
 
 enum
 {
@@ -32,6 +41,8 @@ enum
     SettingsTabThemes,
     SettingsTabPlugins,
     SettingsTabScripting,
+    SettingsTabAbout,
+    SettingsTabLicenses,
 };
 
 static void DetectReapplyOpenFile()
@@ -463,6 +474,329 @@ static void DrawThemes()
     }
 }
 
+static char g_plug_q[128];
+static bool g_plug_in_name = true;
+static bool g_plug_in_id = true;
+static bool g_plug_in_author = true;
+static int  g_plug_status; // 0 all, 1 enabled, 2 disabled
+static char g_plug_auth[32][80];
+static uint8_t g_plug_auth_on[32];
+static int  g_plug_auth_n;
+static char g_plug_auth_sig[512];
+static bool g_plug_search_open;
+static bool g_plug_filter_open;
+
+static void LowerAscii(char* s)
+{
+    for (; s && *s; s++)
+    {
+        if (*s >= 'A' && *s <= 'Z')
+            *s = (char)(*s - 'A' + 'a');
+    }
+}
+
+static bool PlugHay(const char* hay, const char* needle)
+{
+    if (!needle || !needle[0])
+        return true;
+    if (!hay)
+        return false;
+    char h[320];
+    char n[160];
+    snprintf(h, sizeof(h), "%s", hay);
+    snprintf(n, sizeof(n), "%s", needle);
+    LowerAscii(h);
+    LowerAscii(n);
+    return strstr(h, n) != nullptr;
+}
+
+static void PlugSyncAuthors()
+{
+    char sig[512];
+    sig[0] = 0;
+    int n = PluginCount();
+    for (int i = 0; i < n; i++)
+    {
+        const char* a = PluginAuthor(i);
+        if (!a[0])
+            continue;
+        size_t used = strlen(sig);
+        if (used + 2 >= sizeof(sig))
+            break;
+        if (sig[0])
+        {
+            sig[used] = '|';
+            sig[used + 1] = 0;
+            used++;
+        }
+        snprintf(sig + used, sizeof(sig) - used, "%s", a);
+    }
+    if (strcmp(sig, g_plug_auth_sig) == 0)
+        return;
+    snprintf(g_plug_auth_sig, sizeof(g_plug_auth_sig), "%s", sig);
+    g_plug_auth_n = 0;
+    memset(g_plug_auth_on, 1, sizeof(g_plug_auth_on));
+    for (int i = 0; i < n && g_plug_auth_n < 32; i++)
+    {
+        const char* a = PluginAuthor(i);
+        if (!a[0])
+            continue;
+        int have = 0;
+        for (int j = 0; j < g_plug_auth_n; j++)
+        {
+            if (_stricmp(g_plug_auth[j], a) == 0)
+            {
+                have = 1;
+                break;
+            }
+        }
+        if (have)
+            continue;
+        snprintf(g_plug_auth[g_plug_auth_n], sizeof(g_plug_auth[0]), "%s", a);
+        g_plug_auth_on[g_plug_auth_n] = 1;
+        g_plug_auth_n++;
+    }
+}
+
+static bool PlugAuthorAllowed(const char* author)
+{
+    if (g_plug_auth_n <= 0)
+        return true;
+    int any_on = 0;
+    int any_off = 0;
+    for (int i = 0; i < g_plug_auth_n; i++)
+    {
+        if (g_plug_auth_on[i])
+            any_on = 1;
+        else
+            any_off = 1;
+    }
+    if (!any_off)
+        return true;
+    if (!any_on)
+        return false;
+    if (!author || !author[0])
+        return false;
+    for (int i = 0; i < g_plug_auth_n; i++)
+    {
+        if (g_plug_auth_on[i] && _stricmp(g_plug_auth[i], author) == 0)
+            return true;
+    }
+    return false;
+}
+
+static bool PlugMatches(int i)
+{
+    bool on = PluginEnabled(i);
+    if (g_plug_status == 1 && !on)
+        return false;
+    if (g_plug_status == 2 && on)
+        return false;
+    if (!PlugAuthorAllowed(PluginAuthor(i)))
+        return false;
+    if (!g_plug_q[0])
+        return true;
+    bool hit = false;
+    if (g_plug_in_name && PlugHay(PluginName(i), g_plug_q))
+        hit = true;
+    if (g_plug_in_id && PlugHay(PluginId(i), g_plug_q))
+        hit = true;
+    if (g_plug_in_author && PlugHay(PluginAuthor(i), g_plug_q))
+        hit = true;
+    return hit;
+}
+
+static bool PlugFilterDirty()
+{
+    if (!g_plug_in_name || !g_plug_in_id || !g_plug_in_author)
+        return true;
+    if (g_plug_status != 0)
+        return true;
+    for (int i = 0; i < g_plug_auth_n; i++)
+    {
+        if (!g_plug_auth_on[i])
+            return true;
+    }
+    return false;
+}
+
+static void PlugResetFilters()
+{
+    g_plug_in_name = true;
+    g_plug_in_id = true;
+    g_plug_in_author = true;
+    g_plug_status = 0;
+    for (int i = 0; i < g_plug_auth_n; i++)
+        g_plug_auth_on[i] = 1;
+}
+
+static void DrawPluginSearchDialog()
+{
+    if (g_plug_search_open)
+        ImGui::OpenPopup("plugin_search");
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
+    char title[160];
+    snprintf(title, sizeof(title), "%s###plugin_search", I18nGet("plugin.search_title"));
+    if (!ImGui::BeginPopupModal(title, &g_plug_search_open, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("plugin.search_hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("plugin.search_query"));
+    ImGui::SetNextItemWidth(-1.f);
+    if (ImGui::IsWindowAppearing())
+        ImGui::SetKeyboardFocusHere();
+    ImGui::InputText("##plugq", g_plug_q, (int)sizeof(g_plug_q));
+    ImGui::Spacing();
+    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
+    {
+        g_plug_search_open = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (UiButton(I18nGet("plugin.search_clear")))
+        g_plug_q[0] = 0;
+    ImGui::EndPopup();
+}
+
+static void DrawPluginFilterDialog()
+{
+    if (g_plug_filter_open)
+        ImGui::OpenPopup("plugin_filter");
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
+    char title[160];
+    snprintf(title, sizeof(title), "%s###plugin_filter", I18nGet("plugin.filter_title"));
+    if (!ImGui::BeginPopupModal(title, &g_plug_filter_open, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+    ImGui::TextUnformatted(I18nGet("plugin.filter_in"));
+    UiCheckbox("fn", I18nGet("plugin.filter_name"), &g_plug_in_name);
+    UiCheckbox("fid", I18nGet("plugin.filter_package"), &g_plug_in_id);
+    UiCheckbox("fau", I18nGet("plugin.filter_author"), &g_plug_in_author);
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("plugin.filter_status"));
+    if (ImGui::RadioButton(I18nGet("plugin.filter_all"), g_plug_status == 0))
+        g_plug_status = 0;
+    ImGui::SameLine();
+    if (ImGui::RadioButton(I18nGet("plugin.filter_enabled"), g_plug_status == 1))
+        g_plug_status = 1;
+    ImGui::SameLine();
+    if (ImGui::RadioButton(I18nGet("plugin.filter_disabled"), g_plug_status == 2))
+        g_plug_status = 2;
+    if (g_plug_auth_n > 0)
+    {
+        ImGui::Spacing();
+        ImGui::TextUnformatted(I18nGet("plugin.filter_authors"));
+        float h = ImGui::GetTextLineHeightWithSpacing() * (float)(g_plug_auth_n > 6 ? 6 : g_plug_auth_n) + 8.f;
+        ImGui::BeginChild("authlist", ImVec2(-1.f, h), ImGuiChildFlags_Borders);
+        for (int i = 0; i < g_plug_auth_n; i++)
+        {
+            ImGui::PushID(i);
+            bool on = g_plug_auth_on[i] != 0;
+            if (UiCheckbox("a", g_plug_auth[i], &on))
+                g_plug_auth_on[i] = on ? 1 : 0;
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+    }
+    ImGui::Spacing();
+    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
+    {
+        g_plug_filter_open = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (UiButton(I18nGet("plugin.filter_reset")))
+        PlugResetFilters();
+    ImGui::EndPopup();
+}
+
+static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
+{
+    ImGui::PushID(i);
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("card", ImVec2(cell_w, cell_h));
+    ImVec2 after = ImGui::GetCursorScreenPos();
+    ImVec2 p1 = ImGui::GetItemRectMax();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    bool on = PluginEnabled(i);
+    dl->AddRectFilled(p0, p1, ThemeColCard());
+    dl->AddRect(p0, p1, on ? ThemeColBorder() : ThemeColBorderA(0.55f), 0.f, 0, 1.f);
+    UiHoverSweep(p0, p1, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
+
+    ImVec2 img0(p0.x + 10.f, p0.y + 10.f);
+    ImVec2 img1(p0.x + cell_w - 10.f, p0.y + 10.f + img_h);
+    dl->AddRectFilled(img0, img1, ThemeColInput());
+    int tw = 0, th = 0;
+    void* srv = PluginCoverSrv(i, &tw, &th);
+    if (!srv)
+        srv = TexPlaceholder();
+    if (srv)
+        dl->AddImage(ImTextureRef((void*)srv), img0, img1);
+    else
+        IconDrawRole(IconBox, ImVec2((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f),
+            IconRoleLg, ThemeColMuted());
+
+    float tx = p0.x + 12.f;
+    float ty = img1.y + 10.f;
+    char head[160];
+    snprintf(head, sizeof(head), "%s  %s", PluginName(i), PluginVersion(i));
+    dl->AddText(ImVec2(tx, ty), ThemeColFg(), head);
+    ty += ImGui::GetTextLineHeight() + 3.f;
+    if (PluginAuthor(i)[0])
+    {
+        char by[120];
+        snprintf(by, sizeof(by), "%s %s", I18nGet("settings.made_by"), PluginAuthor(i));
+        dl->AddText(ImVec2(tx, ty), ThemeColMuted(), by);
+        ty += ImGui::GetTextLineHeight() + 2.f;
+    }
+    char pkg[160];
+    snprintf(pkg, sizeof(pkg), "%s  %s", I18nGet("plugin.package"), PluginId(i));
+    dl->AddText(ImVec2(tx, ty), ThemeColMuted(), pkg);
+    ty += ImGui::GetTextLineHeight() + 6.f;
+    if (PluginDescription(i)[0])
+    {
+        dl->PushClipRect(ImVec2(tx, ty), ImVec2(p1.x - 12.f, p1.y - ThemePx(48.f)), true);
+        dl->AddText(nullptr, 0.f, ImVec2(tx, ty), ThemeColMuted(), PluginDescription(i), nullptr, cell_w - 24.f);
+        dl->PopClipRect();
+    }
+    if (PluginError(i)[0])
+        dl->AddText(ImVec2(tx, p1.y - ThemePx(70.f)), ThemeColDanger(), PluginError(i));
+
+    ImGui::SetCursorScreenPos(ImVec2(p0.x + 12.f, p1.y - ThemePx(40.f)));
+    ImGui::BeginGroup();
+    bool en = on;
+    if (UiCheckbox("en", I18nGet("plugin.enabled"), &en) && en != on)
+        PluginSetEnabled(i, en);
+    if (PluginHasSettings(i))
+    {
+        ImGui::SameLine();
+        if (UiButton(I18nGet("settings.plugins.settings")))
+            ImGui::OpenPopup("pset");
+        if (ImGui::BeginPopup("pset"))
+        {
+            ImGui::SetNextItemWidth(ThemePx(280.f));
+            PluginDrawSettings(i);
+            ImGui::EndPopup();
+        }
+    }
+    else if (PluginEnabled(i) && !PluginInited(i))
+    {
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        ImGui::TextUnformatted(I18nGet("settings.plugins.settings_off"));
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndGroup();
+    ImGui::SetCursorScreenPos(after);
+    ImGui::Dummy(ImVec2(0.f, 0.f));
+    ImGui::PopID();
+}
+
 static void DrawPlugins()
 {
     if (ImFont* title = ThemeFontTitle())
@@ -475,49 +809,51 @@ static void DrawPlugins()
     ImGui::TextWrapped("%s", I18nGet("settings.plugins_hint"));
     ImGui::PopStyleColor();
     ImGui::Spacing();
+    if (UiButton(I18nGet("plugin.search"), ImVec2(0, 0), g_plug_q[0] ? 1 : 0))
+        g_plug_search_open = true;
+    ImGui::SameLine();
+    if (UiButton(I18nGet("plugin.filter"), ImVec2(0, 0), PlugFilterDirty() ? 1 : 0))
+        g_plug_filter_open = true;
+    ImGui::SameLine();
     if (UiButton(I18nGet("plugin.rescan")))
         PluginRescan();
+    DrawPluginSearchDialog();
+    DrawPluginFilterDialog();
     ImGui::Spacing();
+
+    PlugSyncAuthors();
     int n = PluginCount();
     if (n == 0)
     {
         ImGui::TextUnformatted(I18nGet("plugin.none"));
         return;
     }
-    for (int i = 0; i < n; i++)
+    int vis[32];
+    int nv = 0;
+    for (int i = 0; i < n && nv < 32; i++)
     {
-        ImGui::PushID(i);
-        bool on = PluginEnabled(i);
-        char lab[160];
-        snprintf(lab, sizeof(lab), "%s  %s", PluginName(i), PluginVersion(i));
-        if (UiCheckbox("en", lab, &on) && on != PluginEnabled(i))
-            PluginSetEnabled(i, on);
-        ImGui::Indent();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-        if (PluginAuthor(i)[0])
-            ImGui::Text("%s %s", I18nGet("settings.made_by"), PluginAuthor(i));
-        if (PluginDescription(i)[0])
-            ImGui::TextWrapped("%s", PluginDescription(i));
-        ImGui::TextUnformatted(PluginId(i));
-        ImGui::TextUnformatted(PluginPath(i));
-        if (PluginError(i)[0])
-            ImGui::TextUnformatted(PluginError(i));
-        ImGui::PopStyleColor();
-        if (PluginHasSettings(i))
-        {
-            ImGui::Spacing();
-            if (ImGui::CollapsingHeader(I18nGet("settings.plugins.settings")))
-                PluginDrawSettings(i);
-        }
-        else if (PluginEnabled(i) && !PluginInited(i))
-        {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-            ImGui::TextWrapped("%s", I18nGet("settings.plugins.settings_off"));
-            ImGui::PopStyleColor();
-        }
-        ImGui::Unindent();
-        ImGui::Spacing();
-        ImGui::PopID();
+        if (PlugMatches(i))
+            vis[nv++] = i;
+    }
+    if (nv == 0)
+    {
+        ImGui::TextUnformatted(I18nGet("plugin.none_match"));
+        return;
+    }
+
+    float cell_w = ThemePx(280.f);
+    float img_h = ThemePx(140.f);
+    float cell_h = ThemePx(318.f);
+    float gap = ThemePx(16.f);
+    float avail = ImGui::GetContentRegionAvail().x;
+    int cols = (int)((avail + gap) / (cell_w + gap));
+    if (cols < 1)
+        cols = 1;
+    for (int k = 0; k < nv; k++)
+    {
+        if (k % cols != 0)
+            ImGui::SameLine(0.f, gap);
+        DrawPluginCard(vis[k], cell_w, cell_h, img_h);
     }
 }
 
@@ -667,6 +1003,356 @@ static void DrawScripting()
     ImGui::PopID();
 }
 
+static void OpenUrl(const char* url)
+{
+    if (url && url[0])
+        ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+static bool AboutLink(const char* label, const char* url)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColAccent()));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    bool hit = ImGui::IsItemClicked();
+    if (ImGui::IsItemHovered())
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    if (hit && url)
+        OpenUrl(url);
+    return hit;
+}
+
+static void AboutRow(const char* label, const char* value)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(ThemePx(148.f));
+    ImGui::TextUnformatted(value && value[0] ? value : "-");
+}
+
+static bool HttpGetHttps(const wchar_t* host, const wchar_t* path, std::vector<uint8_t>* out)
+{
+    if (!host || !path || !out)
+        return false;
+    out->clear();
+    HINTERNET ses = WinHttpOpen(L"BinarySectorInspector", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses)
+        return false;
+    WinHttpSetTimeouts(ses, 2500, 2500, 2500, 4000);
+    HINTERNET con = WinHttpConnect(ses, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
+    if (!con)
+    {
+        WinHttpCloseHandle(ses);
+        return false;
+    }
+    HINTERNET req = WinHttpOpenRequest(con, L"GET", path, nullptr, WINHTTP_NO_REFERER,
+        WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (!req)
+    {
+        WinHttpCloseHandle(con);
+        WinHttpCloseHandle(ses);
+        return false;
+    }
+    BOOL ok = WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+    if (ok)
+        ok = WinHttpReceiveResponse(req, nullptr);
+    DWORD status = 0;
+    DWORD slen = sizeof(status);
+    if (ok)
+        ok = WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+            WINHTTP_HEADER_NAME_BY_INDEX, &status, &slen, WINHTTP_NO_HEADER_INDEX);
+    if (!ok || status != 200)
+    {
+        WinHttpCloseHandle(req);
+        WinHttpCloseHandle(con);
+        WinHttpCloseHandle(ses);
+        return false;
+    }
+    const size_t kMax = 2 * 1024 * 1024;
+    for (;;)
+    {
+        DWORD avail = 0;
+        if (!WinHttpQueryDataAvailable(req, &avail))
+            break;
+        if (!avail)
+            break;
+        if (out->size() + avail > kMax)
+        {
+            out->clear();
+            break;
+        }
+        size_t at = out->size();
+        out->resize(at + avail);
+        DWORD rd = 0;
+        if (!WinHttpReadData(req, out->data() + at, avail, &rd))
+        {
+            out->clear();
+            break;
+        }
+        out->resize(at + rd);
+    }
+    WinHttpCloseHandle(req);
+    WinHttpCloseHandle(con);
+    WinHttpCloseHandle(ses);
+    return out->size() > 32;
+}
+
+enum
+{
+    AuthorIdle = 0,
+    AuthorLoading,
+    AuthorReady,
+    AuthorFail
+};
+
+static std::atomic<int> g_author_st{ AuthorIdle };
+static std::mutex g_author_mu;
+static std::vector<uint8_t> g_author_bytes;
+static ID3D11ShaderResourceView* g_author_srv;
+static int g_author_w;
+static int g_author_h;
+
+static void AuthorKick()
+{
+    int expect = AuthorIdle;
+    if (!g_author_st.compare_exchange_strong(expect, AuthorLoading))
+        return;
+    std::thread([] {
+        std::vector<uint8_t> buf;
+        bool ok = HttpGetHttps(L"avatars.githubusercontent.com", L"/u/74156337", &buf);
+        if (ok)
+        {
+            std::lock_guard<std::mutex> lock(g_author_mu);
+            g_author_bytes.swap(buf);
+            g_author_st.store(AuthorReady);
+        }
+        else
+            g_author_st.store(AuthorFail);
+    }).detach();
+}
+
+static ID3D11ShaderResourceView* AuthorTex()
+{
+    AuthorKick();
+    int st = g_author_st.load();
+    if (st == AuthorReady && !g_author_srv)
+    {
+        std::vector<uint8_t> bytes;
+        {
+            std::lock_guard<std::mutex> lock(g_author_mu);
+            bytes.swap(g_author_bytes);
+        }
+        if (!bytes.empty() && !TexLoadMemory(bytes.data(), bytes.size(), &g_author_srv, &g_author_w, &g_author_h))
+            g_author_st.store(AuthorFail);
+    }
+    return g_author_srv;
+}
+
+static float LysepSpinAngle()
+{
+    const float pi = 3.14159265f;
+    if (!UiAnimEnabled())
+        return 0.f;
+    const float pause = 1.85f;
+    const float spin = 0.36f;
+    const float cycle = pause + spin;
+    double t = ImGui::GetTime();
+    int n = (int)floor(t / (double)cycle);
+    float phase = (float)(t - (double)n * (double)cycle);
+    float base = (float)(n & 3) * (pi * 0.5f);
+    if (phase <= pause)
+        return base;
+    float u = (phase - pause) / spin;
+    if (u < 0.f)
+        u = 0.f;
+    if (u > 1.f)
+        u = 1.f;
+    u = u * u * (3.f - 2.f * u);
+    return base + u * (pi * 0.5f);
+}
+
+// Mark geometry matches assets/lysep_logo.svg (inner disc + two 90deg rings + two ~33deg wedges).
+static void DrawLysepMark(ImDrawList* dl, ImVec2 c, float r, float ang, ImU32 col)
+{
+    if (!dl || r < 4.f)
+        return;
+    const float pi = 3.14159265f;
+    dl->AddCircleFilled(c, r * 0.303f, col, 48);
+    const float mid = r * 0.825f;
+    const float thick = r * 0.351f;
+    const float arcs[][2] = {
+        { -pi, -pi * 0.5f },
+        { 0.f, pi * 0.5f },
+        { 2.0785f, 2.6631f },
+        { -1.0532f, -0.4663f },
+    };
+    for (int i = 0; i < 4; i++)
+    {
+        int segs = (arcs[i][1] - arcs[i][0] > 1.f) ? 20 : 12;
+        dl->PathArcTo(c, mid, arcs[i][0] + ang, arcs[i][1] + ang, segs);
+        dl->PathStroke(col, 0, thick);
+    }
+}
+
+static void DrawLysepBrand()
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextUnformatted(I18nGet("about.sponsor"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    const ImU32 orange = IM_COL32(0xFD, 0x70, 0x00, 255);
+    float r = ThemePx(18.f);
+    ImFont* title = ThemeFontTitle();
+    if (title)
+        ImGui::PushFont(title);
+    ImFont* font = ImGui::GetFont();
+    float fs = ImGui::GetFontSize();
+    ImVec2 lysep = font->CalcTextSizeA(fs, 1e9f, 0.f, "LYSEP");
+    ImVec2 corp = font->CalcTextSizeA(fs, 1e9f, 0.f, "CORP");
+    float gap = ThemePx(10.f);
+    float h = r * 2.f;
+    if (h < fs)
+        h = fs;
+    float w = r * 2.f + gap + lysep.x + corp.x;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    bool hit = ImGui::InvisibleButton("lysep_brand", ImVec2(w, h));
+    UiHandIfHovered();
+    if (hit)
+        OpenUrl("https://lysep.com/");
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 c(p.x + r, p.y + h * 0.5f);
+    DrawLysepMark(dl, c, r, LysepSpinAngle(), orange);
+    float tx = p.x + r * 2.f + gap;
+    float ty = p.y + (h - fs) * 0.5f;
+    dl->AddText(font, fs, ImVec2(tx, ty), ThemeColFg(), "LYSEP");
+    dl->AddText(font, fs, ImVec2(tx + lysep.x, ty), orange, "CORP");
+    if (title)
+        ImGui::PopFont();
+}
+
+static void DrawAbout()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.about"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+
+    ID3D11ShaderResourceView* pic = AuthorTex();
+    if (pic)
+    {
+        float side = ThemePx(72.f);
+        ImVec2 p0 = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(ImVec2(side, side));
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 p1(p0.x + side, p0.y + side);
+        dl->AddImageRounded(ImTextureRef((void*)pic), p0, p1, ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, side * 0.5f);
+        ImGui::SameLine();
+    }
+    ImGui::BeginGroup();
+    if (ImFont* t = ThemeFontTitle())
+        ImGui::PushFont(t);
+    ImGui::TextUnformatted("candestan");
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    AboutLink("github.com/candestan", "https://github.com/candestan");
+    AboutLink("github.com/candestan/BinarySectorInspector", "https://github.com/candestan/BinarySectorInspector");
+    ImGui::EndGroup();
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    AboutRow(I18nGet("about.version"), VersionString());
+    char build[64];
+    snprintf(build, sizeof(build), "%d", VersionBuildNumber());
+    AboutRow(I18nGet("about.build"), build);
+    AboutRow(I18nGet("about.full"), VersionFull());
+    AboutRow(I18nGet("about.config"), VersionConfig());
+    AboutRow(I18nGet("about.commit"), VersionGitShort());
+    AboutRow(I18nGet("about.commit_full"), VersionGitCommit());
+    AboutRow(I18nGet("about.built"), VersionBuildTime());
+    if (VersionGitDirty())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        ImGui::TextWrapped("%s", I18nGet("about.dirty"));
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Spacing();
+    if (UiButton(I18nGet("about.copy")))
+    {
+        char clip[512];
+        snprintf(clip, sizeof(clip),
+            "BinarySectorInspector %s\nBuild %d (%s)\nCommit %s\n%s\nhttps://github.com/candestan/BinarySectorInspector\n",
+            VersionFull(), VersionBuildNumber(), VersionConfig(), VersionGitCommit(), VersionBuildTime());
+        ImGui::SetClipboardText(clip);
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    DrawLysepBrand();
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("about.license"));
+    ImGui::SameLine();
+    AboutLink(I18nGet("about.license_name"), "https://github.com/candestan/BinarySectorInspector/blob/main/LICENSE");
+}
+
+static void DrawLicenses()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.third_party"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("third_party.hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    struct Third
+    {
+        const char* name;
+        const char* license;
+        const char* url;
+    };
+    static const Third k[] = {
+        { "Dear ImGui", "MIT", "https://github.com/ocornut/imgui/blob/master/LICENSE.txt" },
+        { "imgui_club (memory editor)", "MIT", "https://github.com/ocornut/imgui_club/blob/master/LICENSE.txt" },
+        { "FreeType", "FTL", "https://github.com/freetype/freetype/blob/master/docs/FTL.TXT" },
+        { "nlohmann/json", "MIT", "https://github.com/nlohmann/json/blob/develop/LICENSE.MIT" },
+    };
+    if (ImGui::BeginTable("tp", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
+    {
+        ImGui::TableSetupColumn(I18nGet("third_party.name"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(I18nGet("third_party.license"), ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
+        ImGui::TableSetupColumn(I18nGet("third_party.link"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const Third& t : k)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(t.name);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(t.license);
+            ImGui::TableNextColumn();
+            ImGui::PushID(t.name);
+            AboutLink(t.url, t.url);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::Spacing();
+    ImGui::TextWrapped("%s", I18nGet("third_party.snippets"));
+}
+
 void SettingsPageDraw()
 {
     float enter = UiEnter(0.f, 0.32f);
@@ -698,6 +1384,10 @@ void SettingsPageDraw()
         g_tab = SettingsTabPlugins;
     if (NavTab("tab_script", I18nGet("settings.scripting"), g_tab == SettingsTabScripting))
         g_tab = SettingsTabScripting;
+    if (NavTab("tab_about", I18nGet("settings.about"), g_tab == SettingsTabAbout))
+        g_tab = SettingsTabAbout;
+    if (NavTab("tab_lic", I18nGet("settings.third_party"), g_tab == SettingsTabLicenses))
+        g_tab = SettingsTabLicenses;
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
@@ -713,6 +1403,10 @@ void SettingsPageDraw()
         DrawDetectionSettings();
     else if (g_tab == SettingsTabPerformance)
         DrawPerformance();
+    else if (g_tab == SettingsTabAbout)
+        DrawAbout();
+    else if (g_tab == SettingsTabLicenses)
+        DrawLicenses();
     else
         DrawGeneral();
     ImGui::EndChild();

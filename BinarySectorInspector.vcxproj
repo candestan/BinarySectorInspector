@@ -61,6 +61,9 @@
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
     </Manifest>
+    <PreBuildEvent>
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)tools\gen_version.ps1" -Repo "$(ProjectDir)." -Out "$(ProjectDir)src\app\version_git.h"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -87,12 +90,16 @@
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
     </Manifest>
+    <PreBuildEvent>
+      <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)tools\gen_version.ps1" -Repo "$(ProjectDir)." -Out "$(ProjectDir)src\app\version_git.h"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\app\app.cpp" />
     <ClCompile Include="src\app\welcome.cpp" />
     <ClCompile Include="src\app\settings_page.cpp" />
+    <ClCompile Include="src\app\version.cpp" />
     <ClCompile Include="src\app\inspector.cpp" />
     <ClCompile Include="src\engine\engine.cpp" />
     <ClCompile Include="src\engine\device.cpp" />
@@ -140,6 +147,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app\app.h" />
+    <ClInclude Include="src\app\version.h" />
     <ClInclude Include="src\app\welcome.h" />
     <ClInclude Include="src\app\quotes.h" />
     <ClInclude Include="src\app\settings_page.h" />

@@ -13,6 +13,8 @@ const char* PluginAuthor(int i);
 const char* PluginDescription(int i);
 const char* PluginPath(int i);
 const char* PluginError(int i);
+void* PluginIconSrv(int i, int* w, int* h);
+void* PluginCoverSrv(int i, int* w, int* h);
 bool PluginEnabled(int i);
 void PluginSetEnabled(int i, bool on);
 bool PluginInited(int i);

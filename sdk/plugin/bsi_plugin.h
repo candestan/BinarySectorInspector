@@ -99,6 +99,15 @@ struct BsiViewInfo
     const char* label;
 };
 
+// Optional card art. Paths are local (relative to the DLL directory, or absolute).
+// http(s) is ignored. Omit the export, or leave fields null, if you have no art.
+struct BsiVisuals
+{
+    uint32_t    size;
+    const char* icon;  // square-ish; also used if cover is missing
+    const char* cover; // wide card image
+};
+
 // Host-drawn widgets. Do not link ImGui in the plugin; call these during
 // BsiPluginDrawSettings / BsiPluginViewDraw. id must be unique within the plugin.
 struct BsiUi
@@ -242,6 +251,8 @@ Optional (GetProcAddress; omit if unused):
   void BsiPluginDrawSettings(const BsiUi* ui);
 
   void BsiPluginOnJob(int ready);                      // 1 = PE ready, 0 = closed/failed
+
+  const BsiVisuals* BsiPluginVisuals(void);            // card icon/cover; size = sizeof(BsiVisuals)
 */
 
 #ifdef __cplusplus

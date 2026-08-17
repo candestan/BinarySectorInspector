@@ -27,6 +27,7 @@ obj/
 *.dll
 *.appx
 *.ipch
+src/app/version_git.h
 settings.json
 PMAP.md
 .cursor

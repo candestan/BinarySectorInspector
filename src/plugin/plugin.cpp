@@ -1,6 +1,7 @@
 #include "plugin/plugin.h"
 #include "plugin/bsi_plugin_abi.h"
 #include "app/app.h"
+#include "app/version.h"
 #include "pe/pe.h"
 #include "log/log.h"
 #include "persist/paths.h"
@@ -10,11 +11,13 @@
 #include "ui/widgets.h"
 #include "ui/theme.h"
 #include "ui/hex_view.h"
+#include "ui/tex.h"
 
 #include "imgui.h"
 #include <nlohmann/json.hpp>
 
 #include <windows.h>
+#include <d3d11.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -36,6 +39,7 @@ typedef int  (*FnViewDraw)(int, const BsiUi*);
 typedef int  (*FnHasSettings)(void);
 typedef void (*FnDrawSettings)(const BsiUi*);
 typedef void (*FnOnJob)(int);
+typedef const BsiVisuals* (*FnVisuals)(void);
 
 struct PluginRec
 {
@@ -63,6 +67,17 @@ struct PluginRec
     FnHasSettings has_settings;
     FnDrawSettings draw_settings;
     FnOnJob     on_job;
+    FnVisuals   visuals;
+    char    icon_path[MAX_PATH];
+    char    cover_path[MAX_PATH];
+    ID3D11ShaderResourceView* icon_srv;
+    ID3D11ShaderResourceView* cover_srv;
+    int     icon_w;
+    int     icon_h;
+    int     cover_w;
+    int     cover_h;
+    bool    icon_tried;
+    bool    cover_tried;
 };
 
 static std::vector<PluginRec> g_plugins;
@@ -636,7 +651,7 @@ static const char* RecHostName(void*)
 
 static const char* RecHostVersion(void*)
 {
-    return "0.1.0";
+    return VersionString();
 }
 
 static int RecReadFile(void*, const char* path, void* buf, uint32_t cap, uint32_t* out_n)
@@ -1049,11 +1064,171 @@ static void FillHost(PluginRec* p)
     p->host.section_at = RecSectionAt;
 }
 
+static void ReleaseSrv(ID3D11ShaderResourceView** srv)
+{
+    if (srv && *srv)
+    {
+        (*srv)->Release();
+        *srv = nullptr;
+    }
+}
+
+static void DllDir(const char* dll, char* out, int cap)
+{
+    if (!out || cap < 4)
+        return;
+    out[0] = 0;
+    if (!dll || !dll[0])
+        return;
+    snprintf(out, cap, "%s", dll);
+    char* slash = strrchr(out, '\\');
+    if (!slash)
+        slash = strrchr(out, '/');
+    if (slash)
+        slash[1] = 0;
+    else
+        out[0] = 0;
+}
+
+static int PathIsUrl(const char* p)
+{
+    return p && (_strnicmp(p, "http://", 7) == 0 || _strnicmp(p, "https://", 8) == 0);
+}
+
+static int PathOkSpec(const char* p)
+{
+    if (!p || !p[0] || PathIsUrl(p) || strstr(p, ".."))
+        return 0;
+    return 1;
+}
+
+static int PathIsAbs(const char* p)
+{
+    if (!p || !p[0])
+        return 0;
+    if (p[0] == '\\' || p[0] == '/')
+        return 1;
+    if (p[1] == ':')
+        return 1;
+    return 0;
+}
+
+static int ResolveLocal(const char* dll, const char* spec, char* out, int cap)
+{
+    if (!out || cap < 8 || !PathOkSpec(spec))
+        return 0;
+    out[0] = 0;
+    if (PathIsAbs(spec))
+        snprintf(out, cap, "%s", spec);
+    else
+    {
+        char dir[MAX_PATH];
+        DllDir(dll, dir, MAX_PATH);
+        snprintf(out, cap, "%s%s", dir, spec);
+    }
+    DWORD attr = GetFileAttributesA(out);
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+}
+
+static int TryDefaultVisual(const char* dll, const char* stem, char* out, int cap)
+{
+    static const char* kExt[] = { ".png", ".jpg", ".jpeg", ".webp", ".bmp", nullptr };
+    char dir[MAX_PATH];
+    DllDir(dll, dir, MAX_PATH);
+    for (int i = 0; kExt[i]; i++)
+    {
+        char rel[96];
+        snprintf(rel, sizeof(rel), "%s%s", stem, kExt[i]);
+        if (ResolveLocal(dll, rel, out, cap))
+            return 1;
+    }
+    return 0;
+}
+
+static void TakeSpec(PluginRec* p, const char* spec, char* dest, int cap, int cover)
+{
+    (void)cover;
+    if (!p || dest[0] || !spec || !spec[0])
+        return;
+    char abs[MAX_PATH];
+    if (ResolveLocal(p->path, spec, abs, MAX_PATH))
+        snprintf(dest, cap, "%s", abs);
+}
+
+static void AttachVisuals(PluginRec* p)
+{
+    if (!p)
+        return;
+    p->icon_path[0] = 0;
+    p->cover_path[0] = 0;
+    if (p->visuals)
+    {
+        const BsiVisuals* v = p->visuals();
+        if (v && v->size >= (uint32_t)BSI_FIELD_END(struct BsiVisuals, icon))
+            TakeSpec(p, v->icon, p->icon_path, (int)sizeof(p->icon_path), 0);
+        if (v && v->size >= (uint32_t)BSI_FIELD_END(struct BsiVisuals, cover))
+            TakeSpec(p, v->cover, p->cover_path, (int)sizeof(p->cover_path), 1);
+    }
+    char dir[MAX_PATH];
+    DllDir(p->path, dir, MAX_PATH);
+    const char* json_names[] = { "plugin.json", "tool.json", nullptr };
+    for (int i = 0; json_names[i]; i++)
+    {
+        char f[MAX_PATH];
+        snprintf(f, sizeof(f), "%s%s", dir, json_names[i]);
+        char* text = nullptr;
+        int n = 0;
+        if (!PathsReadFile(f, &text, &n) || !text)
+            continue;
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(text);
+            if (!p->icon_path[0] && j.contains("icon") && j["icon"].is_string())
+                TakeSpec(p, j["icon"].get<std::string>().c_str(), p->icon_path, (int)sizeof(p->icon_path), 0);
+            if (!p->cover_path[0] && j.contains("cover") && j["cover"].is_string())
+                TakeSpec(p, j["cover"].get<std::string>().c_str(), p->cover_path, (int)sizeof(p->cover_path), 1);
+        }
+        catch (...)
+        {
+        }
+        free(text);
+    }
+    if (!p->icon_path[0])
+        TryDefaultVisual(p->path, "icon", p->icon_path, (int)sizeof(p->icon_path));
+    if (!p->cover_path[0])
+        TryDefaultVisual(p->path, "cover", p->cover_path, (int)sizeof(p->cover_path));
+}
+
+static void* LazyTex(PluginRec* p, int cover, int* w, int* h)
+{
+    if (!p)
+        return nullptr;
+    char* path = cover ? p->cover_path : p->icon_path;
+    bool* tried = cover ? &p->cover_tried : &p->icon_tried;
+    ID3D11ShaderResourceView** srv = cover ? &p->cover_srv : &p->icon_srv;
+    int* ow = cover ? &p->cover_w : &p->icon_w;
+    int* oh = cover ? &p->cover_h : &p->icon_h;
+    if (!path[0])
+        return nullptr;
+    if (!*tried)
+    {
+        *tried = true;
+        TexLoadFile(path, srv, ow, oh);
+    }
+    if (w)
+        *w = *ow;
+    if (h)
+        *h = *oh;
+    return *srv;
+}
+
 static void UnloadOne(PluginRec& p)
 {
     if (p.inited && p.shutdown)
         p.shutdown();
     p.inited = false;
+    ReleaseSrv(&p.icon_srv);
+    ReleaseSrv(&p.cover_srv);
     if (p.h)
         FreeLibrary(p.h);
     p.h = nullptr;
@@ -1109,6 +1284,8 @@ static bool LoadDll(const char* path)
     p.has_settings = (FnHasSettings)GetProcAddress(h, "BsiPluginHasSettings");
     p.draw_settings = (FnDrawSettings)GetProcAddress(h, "BsiPluginDrawSettings");
     p.on_job = (FnOnJob)GetProcAddress(h, "BsiPluginOnJob");
+    p.visuals = (FnVisuals)GetProcAddress(h, "BsiPluginVisuals");
+    AttachVisuals(&p);
     char key[160];
     EnableKey(p.id, key, (int)sizeof(key));
     p.enabled = SettingsGetBool(key, true);
@@ -1216,6 +1393,19 @@ const char* PluginAuthor(int i) { PluginRec* p = At(i); return p ? p->author : "
 const char* PluginDescription(int i) { PluginRec* p = At(i); return p ? p->description : ""; }
 const char* PluginPath(int i) { PluginRec* p = At(i); return p ? p->path : ""; }
 const char* PluginError(int i) { PluginRec* p = At(i); return p && p->err[0] ? p->err : ""; }
+
+void* PluginIconSrv(int i, int* w, int* h)
+{
+    return LazyTex(At(i), 0, w, h);
+}
+
+void* PluginCoverSrv(int i, int* w, int* h)
+{
+    void* cover = LazyTex(At(i), 1, w, h);
+    if (cover)
+        return cover;
+    return PluginIconSrv(i, w, h);
+}
 bool PluginEnabled(int i) { PluginRec* p = At(i); return p && p->enabled; }
 bool PluginInited(int i) { PluginRec* p = At(i); return p && p->inited; }
 
