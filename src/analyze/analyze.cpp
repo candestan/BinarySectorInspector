@@ -30,6 +30,7 @@ void AnalyzeInit()
     AnalyzeRegisterPy2Exe();
     AnalyzeRegisterGo();
     AnalyzeRegisterAutoIt();
+    AnalyzeRegisterAhk();
 }
 
 void AnalyzeStamp(AnalysisArtifact* art, const char* provider_id, const char* group)

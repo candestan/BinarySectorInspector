@@ -108,6 +108,7 @@ void AnalyzeRegister(const AnalyzerProvider* provider);
 void AnalyzeRegisterPy2Exe();
 void AnalyzeRegisterGo();
 void AnalyzeRegisterAutoIt();
+void AnalyzeRegisterAhk();
 void AnalyzeInit();
 void AnalyzeRun(PeFile* pe, const uint8_t* data, size_t n);
 bool AnalyzeExport(const PeFile* pe, const uint8_t* data, size_t n,

@@ -108,6 +108,9 @@
     <ClCompile Include="src\analyze\autoit_analyzer.cpp">
       <Filter>analyze</Filter>
     </ClCompile>
+    <ClCompile Include="src\analyze\ahk_analyzer.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
     <ClCompile Include="src\detect\detect.cpp">
       <Filter>detect</Filter>
     </ClCompile>

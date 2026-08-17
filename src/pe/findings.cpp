@@ -84,13 +84,36 @@ static bool LooksLikeIPv4(const char* s)
 {
     if (!s)
         return false;
-    unsigned a = 0, b = 0, c = 0, d = 0;
-    char extra = 0;
-    if (sscanf_s(s, "%u.%u.%u.%u%c", &a, &b, &c, &d, &extra, 1) != 4)
+    unsigned oct[4] = {};
+    const char* p = s;
+    for (int i = 0; i < 4; i++)
+    {
+        if (*p < '0' || *p > '9')
+            return false;
+        if (p[0] == '0' && p[1] >= '0' && p[1] <= '9')
+            return false;
+        unsigned v = 0;
+        while (*p >= '0' && *p <= '9')
+        {
+            v = v * 10u + (unsigned)(*p - '0');
+            if (v > 255)
+                return false;
+            p++;
+        }
+        oct[i] = v;
+        if (i < 3)
+        {
+            if (*p != '.')
+                return false;
+            p++;
+        }
+    }
+    if (*p)
         return false;
-    if (a > 255 || b > 255 || c > 255 || d > 255)
-        return false;
+    unsigned a = oct[0], b = oct[1], c = oct[2], d = oct[3];
     if (a == 0 || a == 127 || a >= 224)
+        return false;
+    if (a == 1 && b == 0)
         return false;
     if (a < 10 && b < 10 && c < 10 && d < 10)
         return false;

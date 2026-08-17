@@ -115,6 +115,7 @@
     <ClCompile Include="src\analyze\analyze.cpp" />
     <ClCompile Include="src\analyze\go_analyzer.cpp" />
     <ClCompile Include="src\analyze\autoit_analyzer.cpp" />
+    <ClCompile Include="src\analyze\ahk_analyzer.cpp" />
     <ClCompile Include="src\detect\detect.cpp" />
     <ClCompile Include="src\detect\sig_load.cpp" />
     <ClCompile Include="src\detect\sig_match.cpp" />

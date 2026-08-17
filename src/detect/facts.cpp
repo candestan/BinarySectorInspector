@@ -418,10 +418,26 @@ void DetectFillFacts(const PeFile* pe, const uint8_t* bytes, size_t n, DetectFac
         if (L.type_name[0])
             out->resource_types.push_back(L.type_name);
     }
-    const int kMaxStr = 4000;
-    out->strings.reserve((size_t)(pe->strings.size() < kMaxStr ? pe->strings.size() : kMaxStr));
+    const int kMaxStr = 8000;
+    out->strings.reserve((size_t)kMaxStr);
+    if (pe->overlay_size)
+    {
+        for (const PeStringEntry& s : pe->strings)
+        {
+            if (s.file_off >= pe->overlay_off)
+            {
+                out->strings.push_back(s.text);
+                if ((int)out->strings.size() >= kMaxStr)
+                    break;
+            }
+        }
+    }
     for (size_t i = 0; i < pe->strings.size() && (int)out->strings.size() < kMaxStr; i++)
+    {
+        if (pe->overlay_size && pe->strings[i].file_off >= pe->overlay_off)
+            continue;
         out->strings.push_back(pe->strings[i].text);
+    }
 
     if (bytes && n && out->has_com)
         ParseClrMeta(pe, bytes, n, out);

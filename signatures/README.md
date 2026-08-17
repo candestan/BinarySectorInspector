@@ -118,6 +118,7 @@ Shipped procedural analyzers (static `AnalyzerProvider`, no DLL ABI):
 * py2exe — `PYTHONSCRIPT` marshal reconstruction
 * Go — buildinfo + pclntab (1.16+ function tables; older pclntab is detected, not fully walked)
 * AutoIt — SCRIPT / overlay container inventory (compiled payload, not original source)
+* AutoHotkey — Ahk2Exe overlay/RCDATA inventory and plaintext fragments (not a decompiler)
 
 Do not add a C++ condition such as `is_confuserex`. Extend `DetectFacts` only when a new leaf is useful to many products.
 
