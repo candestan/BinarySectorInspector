@@ -34,6 +34,12 @@
     <Filter Include="analyze">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="tool">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -93,6 +99,9 @@
     <ClCompile Include="src\pe\pe.cpp">
       <Filter>pe</Filter>
     </ClCompile>
+    <ClCompile Include="src\pe\patch.cpp">
+      <Filter>pe</Filter>
+    </ClCompile>
     <ClCompile Include="src\pe\py2exe.cpp">
       <Filter>pe</Filter>
     </ClCompile>
@@ -110,6 +119,12 @@
     </ClCompile>
     <ClCompile Include="src\analyze\ahk_analyzer.cpp">
       <Filter>analyze</Filter>
+    </ClCompile>
+    <ClCompile Include="src\tool\tool.cpp">
+      <Filter>tool</Filter>
+    </ClCompile>
+    <ClCompile Include="src\plugin\plugin.cpp">
+      <Filter>plugin</Filter>
     </ClCompile>
     <ClCompile Include="src\detect\detect.cpp">
       <Filter>detect</Filter>
@@ -202,6 +217,18 @@
     </ClInclude>
     <ClInclude Include="src\pe\pe.h">
       <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\pe\patch.h">
+      <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\tool\tool.h">
+      <Filter>tool</Filter>
+    </ClInclude>
+    <ClInclude Include="src\plugin\plugin.h">
+      <Filter>plugin</Filter>
+    </ClInclude>
+    <ClInclude Include="src\plugin\bsi_plugin_abi.h">
+      <Filter>plugin</Filter>
     </ClInclude>
     <ClInclude Include="src\analyze\analyze.h">
       <Filter>analyze</Filter>

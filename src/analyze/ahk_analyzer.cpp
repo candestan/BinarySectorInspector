@@ -166,6 +166,33 @@ static bool AnalyzeAhk(PeFile* pe, const uint8_t* data, size_t n)
         AnalyzeAddProp(&root, "script_mark", offb);
         root.file_off = (uint32_t)mark_off;
         AnalyzeAddProp(&root, "magic", ">AUTOHOTKEY SCRIPT<");
+        uint32_t start = (uint32_t)mark_off + (uint32_t)sizeof(kMarkAsc);
+        if (start + 16 < n)
+        {
+            uint32_t take = (uint32_t)n - start;
+            if (take > kMaxBlob)
+                take = kMaxBlob;
+            if (pe->overlay_size && start >= pe->overlay_off)
+            {
+                uint32_t oend = pe->overlay_off + (uint32_t)pe->overlay_size;
+                if (start < oend && start + take > oend)
+                    take = oend - start;
+            }
+            if (AnalyzeLooksText(data + start, take > 4096 ? 4096 : take))
+            {
+                AnalysisArtifact sc{};
+                snprintf(sc.id, sizeof(sc.id), "ahk.script");
+                sc.kind = AnalysisKindScript;
+                snprintf(sc.label, sizeof(sc.label), "Embedded script");
+                AnalyzeStamp(&sc, kAnalyzerId, "AutoHotkey");
+                AnalyzeSetMedia(&sc, "script.text");
+                sc.file_off = start;
+                sc.size = take;
+                AnalyzeAddRawExport(&sc, "script", "pe.analysis_dump_script", "script.ahk", start, take);
+                root.children.push_back(std::move(sc));
+                AnalyzeAddProp(&root, "script_payload", "text");
+            }
+        }
     }
     else
         AnalyzeAddProp(&root, "runtime", "AutoHotkey");
@@ -180,6 +207,7 @@ static bool AnalyzeAhk(PeFile* pe, const uint8_t* data, size_t n)
             on = kMaxBlob;
         AnalyzeAddRawExport(&root, "overlay", "pe.analysis_dump_raw", "ahk_overlay.bin",
             pe->overlay_off, on);
+        AnalyzeSetMedia(&root, "bytes.raw");
         char sz[16];
         snprintf(sz, sizeof(sz), "%u", on);
         AnalyzeAddProp(&root, "overlay", sz);

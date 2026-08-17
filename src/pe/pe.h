@@ -126,6 +126,14 @@ enum PeFindingKind : uint8_t
     PeFindCrypto
 };
 
+enum PeSaveStatus : uint8_t
+{
+    PeSaveOk = 0,
+    PeSaveBackupFailed,
+    PeSaveWriteFailed,
+    PeSaveBadArgs
+};
+
 struct PeFinding
 {
     PeFindingSev sev;
@@ -317,13 +325,18 @@ const char* PeJobPath();
 uint8_t*    PeJobBytes(size_t* n);
 bool        PeJobDirty();
 void        PeJobTouch();
+void        PeJobClearDirty();
 bool        PeJobSave(const char* path);
+PeSaveStatus PeJobSaveEx(const char* path, bool skip_backup);
+const char* PeJobSaveErrorKey();
+const char* PeJobBackupPath();
 void        PePatchClr();
 void        PePatchTypelib(int index);
 bool        PePatchBytes(uint32_t off, const uint8_t* src, uint32_t n);
 bool        PePatchVerFixed(int index);
 bool        PePatchVerString(int ver_index, int str_index, const char* utf8);
 uint32_t    PeRvaToFileOff(uint32_t rva);
+uint32_t    PeFileOffToRva(const PeFile* pe, uint32_t off);
 uint32_t    PeImageRvaToOff(const PeFile* pe, uint32_t rva);
 bool        PeAddrFromRva(const PeFile* pe, uint32_t rva, PeAddr* out);
 bool        PeExportIco(int icon_index, const char* path);

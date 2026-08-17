@@ -73,9 +73,12 @@ struct AnalysisArtifact
     char     provider_id[64];
     char     group[48];
     char     status_i18n[48];
+    char     media[48];
     uint32_t file_off;
     uint32_t size;
     uint32_t rva;
+    uint32_t extra;
+    uint32_t extra2;
     bool     flag_main;
     std::vector<AnalysisProp>     props;
     std::vector<std::string>      names;
@@ -116,6 +119,8 @@ bool AnalyzeExport(const PeFile* pe, const uint8_t* data, size_t n,
 const AnalysisArtifact* AnalyzeFindByOff(const PeFile* pe, uint32_t file_off);
 const AnalyzerProvider* AnalyzeFindProvider(const char* id);
 void AnalyzeStamp(AnalysisArtifact* art, const char* provider_id, const char* group);
+void AnalyzeSetMedia(AnalysisArtifact* art, const char* media);
+bool AnalyzeLooksText(const uint8_t* p, uint32_t n);
 void AnalyzeAddProp(AnalysisArtifact* art, const char* key, const char* value);
 void AnalyzeAddFinding(PeFile* pe, int sev, const char* title, const char* why);
 void AnalyzeTableInit(AnalysisTable* t, const char* id, const char* title_i18n);

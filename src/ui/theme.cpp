@@ -56,12 +56,12 @@ int ThemeChromeButtonCount() { return 4; } // settings, min, max, close
 float ThemeLabelW() { return ThemePx(200.f); }
 float ThemeTreeMinW() { return ThemePx(168.f); }
 float ThemeSplitHit() { return ThemePx(8.f); }
-float ThemeMenuPadX() { return ThemePx(12.f); }
-float ThemeMenuPadY() { return ThemePx(7.f); }
-float ThemePopupPad() { return ThemePx(8.f); }
-float ThemeHitMin() { return ThemePx(22.f); }
-float ThemeRowH() { return ThemePx(24.f); }
-float ThemeTooltipPad() { return ThemePx(8.f); }
+float ThemeMenuPadX() { return ThemePx(14.f); }
+float ThemeMenuPadY() { return ThemePx(11.f); }
+float ThemePopupPad() { return ThemePx(10.f); }
+float ThemeHitMin() { return ThemePx(28.f); }
+float ThemeRowH() { return ThemePx(28.f); }
+float ThemeTooltipPad() { return ThemePx(10.f); }
 
 static void RefreshDpi()
 {
@@ -112,6 +112,9 @@ ImU32 ThemeColMuted() { return Col(kMutedFg, 1.f); }
 ImU32 ThemeColMutedA(float a) { return Col(kMutedFg, a); }
 ImU32 ThemeColAccent() { return Col(kAccent, 1.f); }
 ImU32 ThemeColAccentA(float a) { return Col(kAccent, a); }
+ImU32 ThemeColDanger() { return Col(0xD23030, 1.f); }
+ImU32 ThemeColHexUnsaved() { return Col(0xD23030, 0.43f); }
+ImU32 ThemeColHexSaved() { return Col(kAccent, 0.43f); }
 ImU32 ThemeColBg() { return Col(kBg, 1.f); }
 ImU32 ThemeColBgA(float a) { return Col(kBg, a); }
 ImU32 ThemeColCard() { return Col(kCard, 1.f); }
@@ -271,10 +274,10 @@ void ThemeApply()
     s.PopupBorderSize = 1.f;
     s.FrameBorderSize = 1.f;
     s.WindowPadding = ImVec2(ThemeSpaceMd(), ThemeSpaceSm());
-    s.FramePadding = ImVec2(ThemePx(10.f), ThemePx(6.f));
-    s.ItemSpacing = ImVec2(ThemePx(10.f), ThemePx(6.f));
-    s.ItemInnerSpacing = ImVec2(ThemePx(6.f), ThemePx(4.f));
-    s.CellPadding = ImVec2(ThemePx(8.f), ThemePx(5.f));
+    s.FramePadding = ImVec2(ThemePx(12.f), ThemePx(8.f));
+    s.ItemSpacing = ImVec2(ThemePx(10.f), ThemePx(8.f));
+    s.ItemInnerSpacing = ImVec2(ThemePx(8.f), ThemePx(5.f));
+    s.CellPadding = ImVec2(ThemePx(10.f), ThemePx(7.f));
     s.IndentSpacing = ThemeSpaceMd();
     s.ScrollbarSize = ThemePx(12.f);
     s.GrabMinSize = ThemePx(12.f);

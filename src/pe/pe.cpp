@@ -1,4 +1,5 @@
 #include "pe/pe.h"
+#include "pe/patch.h"
 #include "log/log.h"
 #include "detect/detect.h"
 #include "analyze/analyze.h"
@@ -1487,6 +1488,7 @@ static void JobThread(std::string path)
         g_err[0] = 0;
         sec_n = g_file.section_n;
         imp_n = g_file.imports.size();
+        PatchJournalLoad(g_bytes.data(), g_bytes.size());
     }
     LogSuccess(LogBuiltinAnalyzer, "Analysis completed (%u sections, %zu imports)", sec_n, imp_n);
     g_state.store(JobDone);
@@ -1495,6 +1497,7 @@ static void JobThread(std::string path)
 void PeJobStart(const char* path)
 {
     PeJobShutdown();
+    PatchJournalReset();
     if (!path || !path[0])
         return;
     snprintf(g_path, MAX_PATH, "%s", path);
@@ -1543,6 +1546,7 @@ uint8_t* PeJobBytes(size_t* n)
 
 bool PeJobDirty() { return g_dirty; }
 void PeJobTouch() { g_dirty = true; }
+void PeJobClearDirty() { g_dirty = false; }
 
 void PePatchClr()
 {
@@ -1550,12 +1554,13 @@ void PePatchClr()
         return;
     if (g_file.clr_off + 24 > g_bytes.size())
         return;
-    uint8_t* p = g_bytes.data() + g_file.clr_off;
-    *(uint16_t*)(p + 4) = g_file.clr_major;
-    *(uint16_t*)(p + 6) = g_file.clr_minor;
-    *(uint32_t*)(p + 16) = g_file.clr_flags;
-    *(uint32_t*)(p + 20) = g_file.clr_entry;
-    g_dirty = true;
+    uint8_t after[24];
+    memcpy(after, g_bytes.data() + g_file.clr_off, 24);
+    *(uint16_t*)(after + 4) = g_file.clr_major;
+    *(uint16_t*)(after + 6) = g_file.clr_minor;
+    *(uint32_t*)(after + 16) = g_file.clr_flags;
+    *(uint32_t*)(after + 20) = g_file.clr_entry;
+    PatchApply(g_file.clr_off, after, 24, PatchSrcClr);
 }
 
 void PePatchTypelib(int index)
@@ -1565,19 +1570,14 @@ void PePatchTypelib(int index)
     const PeTypelib& t = g_file.typelibs[index];
     if (!t.msft || t.file_off + 8 > g_bytes.size())
         return;
-    *(uint32_t*)(g_bytes.data() + t.file_off + 4) = t.version;
-    g_dirty = true;
+    uint8_t after[4];
+    memcpy(after, &t.version, 4);
+    PatchApply(t.file_off + 4, after, 4, PatchSrcOther);
 }
 
 bool PePatchBytes(uint32_t off, const uint8_t* src, uint32_t n)
 {
-    if (g_state.load() != JobDone || !src || !n)
-        return false;
-    if ((uint64_t)off + n > g_bytes.size())
-        return false;
-    memcpy(g_bytes.data() + off, src, n);
-    g_dirty = true;
-    return true;
+    return PatchApply(off, src, n, PatchSrcOther);
 }
 
 uint32_t PeImageRvaToOff(const PeFile* pe, uint32_t rva)
@@ -1594,6 +1594,23 @@ uint32_t PeRvaToFileOff(uint32_t rva)
     return RvaToOff(&g_file, rva);
 }
 
+uint32_t PeFileOffToRva(const PeFile* pe, uint32_t off)
+{
+    if (!pe || !pe->ok)
+        return 0;
+    if (pe->size_of_headers && off < pe->size_of_headers)
+        return off;
+    for (int i = 0; i < pe->section_n; i++)
+    {
+        const PeSection& s = pe->sections[i];
+        if (!s.rawptr || !s.rawsize)
+            continue;
+        if (off >= s.rawptr && off < s.rawptr + s.rawsize)
+            return s.vaddr + (off - s.rawptr);
+    }
+    return 0;
+}
+
 static bool WriteVerStr(PeVerString& s, const char* utf8)
 {
     if (!utf8 || s.value_off + 2 > g_bytes.size())
@@ -1605,10 +1622,17 @@ static bool WriteVerStr(PeVerString& s, const char* utf8)
     uint32_t need = (uint32_t)nch * 2u;
     if (need > s.value_cap)
         return false;
-    memset(g_bytes.data() + s.value_off, 0, s.value_cap);
-    memcpy(g_bytes.data() + s.value_off, wbuf, need);
+    std::vector<uint8_t> after(s.value_cap, 0);
+    memcpy(after.data(), wbuf, need);
+    if (!PatchApply(s.value_off, after.data(), s.value_cap, PatchSrcVersion))
+        return false;
     if (s.node_off + 4 <= g_bytes.size())
-        *(uint16_t*)(g_bytes.data() + s.node_off + 2) = (uint16_t)nch;
+    {
+        uint8_t lenb[2];
+        uint16_t nch16 = (uint16_t)nch;
+        memcpy(lenb, &nch16, 2);
+        PatchApply(s.node_off + 2, lenb, 2, PatchSrcVersion);
+    }
     snprintf(s.value, sizeof(s.value), "%s", utf8);
     return true;
 }
@@ -1624,10 +1648,12 @@ bool PePatchVerFixed(int index)
     uint32_t fls = ((uint32_t)v.file[2] << 16) | v.file[3];
     uint32_t pms = ((uint32_t)v.prod[0] << 16) | v.prod[1];
     uint32_t pls = ((uint32_t)v.prod[2] << 16) | v.prod[3];
-    *(uint32_t*)(g_bytes.data() + v.ffi_off + 8) = fms;
-    *(uint32_t*)(g_bytes.data() + v.ffi_off + 12) = fls;
-    *(uint32_t*)(g_bytes.data() + v.ffi_off + 16) = pms;
-    *(uint32_t*)(g_bytes.data() + v.ffi_off + 20) = pls;
+    uint8_t after[16];
+    memcpy(after + 0, &fms, 4);
+    memcpy(after + 4, &fls, 4);
+    memcpy(after + 8, &pms, 4);
+    memcpy(after + 12, &pls, 4);
+    PatchApply(v.ffi_off + 8, after, 16, PatchSrcVersion);
     char fv[48], pv[48];
     snprintf(fv, sizeof(fv), "%u.%u.%u.%u", v.file[0], v.file[1], v.file[2], v.file[3]);
     snprintf(pv, sizeof(pv), "%u.%u.%u.%u", v.prod[0], v.prod[1], v.prod[2], v.prod[3]);
@@ -1751,26 +1777,165 @@ bool PeReplaceIco(int icon_index, const char* path)
     }
     if (img_n != ic.size)
         return false;
-    return PePatchBytes(ic.file_off, img, img_n);
+    return PatchApply(ic.file_off, img, img_n, PatchSrcIcon);
+}
+
+static char g_save_err_key[64];
+static char g_backup_utf8[MAX_PATH];
+
+const char* PeJobSaveErrorKey() { return g_save_err_key; }
+const char* PeJobBackupPath() { return g_backup_utf8; }
+
+static bool Utf8ToWide(const char* u, wchar_t* w, int cap)
+{
+    return u && w && MultiByteToWideChar(CP_UTF8, 0, u, -1, w, cap) > 0;
+}
+
+static bool WideToUtf8(const wchar_t* w, char* u, int cap)
+{
+    return w && u && WideCharToMultiByte(CP_UTF8, 0, w, -1, u, cap, nullptr, nullptr) > 0;
+}
+
+static bool PathExistsW(const wchar_t* p)
+{
+    DWORD a = GetFileAttributesW(p);
+    return a != INVALID_FILE_ATTRIBUTES;
+}
+
+static void SplitDirName(const wchar_t* path, wchar_t* dir, int dir_cap, wchar_t* name, int name_cap)
+{
+    dir[0] = 0;
+    name[0] = 0;
+    const wchar_t* slash = wcsrchr(path, L'\\');
+    if (!slash)
+        slash = wcsrchr(path, L'/');
+    if (!slash)
+    {
+        wcsncpy_s(dir, dir_cap, L".", _TRUNCATE);
+        wcsncpy_s(name, name_cap, path, _TRUNCATE);
+        return;
+    }
+    size_t dlen = (size_t)(slash - path);
+    if (dlen >= (size_t)dir_cap)
+        dlen = (size_t)dir_cap - 1;
+    wcsncpy_s(dir, dir_cap, path, dlen);
+    dir[dlen] = 0;
+    wcsncpy_s(name, name_cap, slash + 1, _TRUNCATE);
+}
+
+static void StemOf(const wchar_t* name, wchar_t* stem, int cap)
+{
+    wcsncpy_s(stem, cap, name, _TRUNCATE);
+    wchar_t* dot = wcsrchr(stem, L'.');
+    if (dot && dot != stem)
+        *dot = 0;
+}
+
+static bool UniqueBackupPath(const wchar_t* dir, const wchar_t* name, wchar_t* out, int cap)
+{
+    wchar_t first[MAX_PATH];
+    _snwprintf_s(first, _TRUNCATE, L"%s\\%s.bak", dir, name);
+    if (!PathExistsW(first))
+    {
+        wcsncpy_s(out, cap, first, _TRUNCATE);
+        return true;
+    }
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    wchar_t stem[MAX_PATH];
+    StemOf(name, stem, MAX_PATH);
+    for (int n = 0; n < 100; n++)
+    {
+        if (n == 0)
+            _snwprintf_s(out, cap, _TRUNCATE,
+                L"%s\\%s_%04u-%02u-%02u_%02u-%02u-%02u_original.bak",
+                dir, stem, st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        else
+            _snwprintf_s(out, cap, _TRUNCATE,
+                L"%s\\%s_%04u-%02u-%02u_%02u-%02u-%02u_original_%d.bak",
+                dir, stem, st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, n + 1);
+        if (!PathExistsW(out))
+            return true;
+    }
+    return false;
+}
+
+static bool CopyBackup(const wchar_t* src, const wchar_t* dst)
+{
+    return CopyFileW(src, dst, TRUE) != 0;
+}
+
+static bool WriteTempReplace(const wchar_t* dest, const void* data, DWORD n)
+{
+    wchar_t tmp[MAX_PATH];
+    _snwprintf_s(tmp, _TRUNCATE, L"%s.%u.tmp", dest, GetCurrentProcessId());
+    HANDLE h = CreateFileW(tmp, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    DWORD wr = 0;
+    BOOL ok = WriteFile(h, data, n, &wr, nullptr);
+    if (ok)
+        FlushFileBuffers(h);
+    CloseHandle(h);
+    if (!ok || wr != n)
+    {
+        DeleteFileW(tmp);
+        return false;
+    }
+    if (MoveFileExW(tmp, dest, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        return true;
+    if (ReplaceFileW(dest, tmp, nullptr, REPLACEFILE_WRITE_THROUGH, nullptr, nullptr))
+        return true;
+    DeleteFileW(tmp);
+    return false;
+}
+
+PeSaveStatus PeJobSaveEx(const char* path, bool skip_backup)
+{
+    auto log = LogFor(LogBuiltinPeAnalyzer).Module("Patch");
+    g_save_err_key[0] = 0;
+    g_backup_utf8[0] = 0;
+    if (!path || !path[0] || g_bytes.empty())
+    {
+        snprintf(g_save_err_key, sizeof(g_save_err_key), "pe.save_fail");
+        return PeSaveBadArgs;
+    }
+    wchar_t wpath[MAX_PATH];
+    if (!Utf8ToWide(path, wpath, MAX_PATH))
+    {
+        snprintf(g_save_err_key, sizeof(g_save_err_key), "pe.save_fail");
+        return PeSaveBadArgs;
+    }
+
+    if (PathExistsW(wpath) && !skip_backup)
+    {
+        wchar_t dir[MAX_PATH], name[MAX_PATH], bak[MAX_PATH];
+        SplitDirName(wpath, dir, MAX_PATH, name, MAX_PATH);
+        if (!UniqueBackupPath(dir, name, bak, MAX_PATH) || !CopyBackup(wpath, bak))
+        {
+            snprintf(g_save_err_key, sizeof(g_save_err_key), "pe.backup_fail");
+            log.Error("Backup failed before save (win32 %lu)", GetLastError());
+            return PeSaveBackupFailed;
+        }
+        WideToUtf8(bak, g_backup_utf8, MAX_PATH);
+        log.Info("Backup written: %s", g_backup_utf8);
+    }
+
+    if (!WriteTempReplace(wpath, g_bytes.data(), (DWORD)g_bytes.size()))
+    {
+        snprintf(g_save_err_key, sizeof(g_save_err_key), "pe.save_fail");
+        log.Error("Atomic save failed (win32 %lu)", GetLastError());
+        return PeSaveWriteFailed;
+    }
+    PatchLogPersisted();
+    PatchOnSaved();
+    snprintf(g_path, MAX_PATH, "%s", path);
+    snprintf(g_file.path, sizeof(g_file.path), "%s", path);
+    log.Success("Saved %s", path);
+    return PeSaveOk;
 }
 
 bool PeJobSave(const char* path)
 {
-    if (!path || !path[0] || g_bytes.empty())
-        return false;
-    wchar_t wpath[MAX_PATH];
-    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH))
-        return false;
-    HANDLE h = CreateFileW(wpath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE)
-        return false;
-    DWORD wr = 0;
-    BOOL ok = WriteFile(h, g_bytes.data(), (DWORD)g_bytes.size(), &wr, nullptr);
-    CloseHandle(h);
-    if (!ok || wr != g_bytes.size())
-        return false;
-    g_dirty = false;
-    snprintf(g_path, MAX_PATH, "%s", path);
-    snprintf(g_file.path, sizeof(g_file.path), "%s", path);
-    return true;
+    return PeJobSaveEx(path, false) == PeSaveOk;
 }

@@ -1,6 +1,7 @@
 #include "ui/hex_view.h"
 #include "app/inspector.h"
 #include "pe/pe.h"
+#include "pe/patch.h"
 #include "i18n/i18n.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
@@ -16,7 +17,6 @@
 #include <stdint.h>
 #include <vector>
 #include <string>
-#include <unordered_set>
 #include <regex>
 #include <algorithm>
 
@@ -40,10 +40,6 @@ static size_t g_anchor = (size_t)-1;
 static size_t g_sel_end = (size_t)-1;
 static bool g_drag;
 
-static std::vector<uint8_t> g_orig;
-static std::unordered_set<size_t> g_unsaved;
-static std::unordered_set<size_t> g_saved;
-
 static char g_query[512];
 static int g_mode = HexModeAob;
 static char g_status[192];
@@ -51,9 +47,6 @@ static bool g_focus_search;
 static std::vector<size_t> g_hits;
 static int g_hit_i = -1;
 static size_t g_hit_len;
-
-static const ImU32 kColDirty = IM_COL32(210, 48, 48, 110);
-static const ImU32 kColSaved = IM_COL32(48, 110, 210, 110);
 
 static void SetStatus(const char* fmt, ...)
 {
@@ -360,28 +353,20 @@ static void CopySel(const uint8_t* data, size_t n, bool ascii)
     ImGui::SetClipboardText(s.c_str());
 }
 
-static void OnWrite(ImU8* mem, size_t off, ImU8 d, void*)
+static void OnWrite(ImU8*, size_t off, ImU8 d, void*)
 {
-    mem[off] = d;
-    if (off < g_orig.size())
-    {
-        if (d == g_orig[off])
-        {
-            g_unsaved.erase(off);
-            g_saved.erase(off);
-        }
-        else
-            g_unsaved.insert(off);
-    }
-    InspectorNoteHexWrite();
+    uint8_t after = d;
+    if (PatchApply((uint32_t)off, &after, 1, PatchSrcHex))
+        InspectorNoteHexWrite();
 }
 
-static ImU32 OnBg(const ImU8*, size_t off, void*)
+static ImU32 OnBg(const ImU8* mem, size_t off, void*)
 {
-    if (g_unsaved.find(off) != g_unsaved.end())
-        return kColDirty;
-    if (g_saved.find(off) != g_saved.end())
-        return kColSaved;
+    PatchByteState st = PatchColor((uint32_t)off, mem[off]);
+    if (st == PatchByteUnsaved)
+        return ThemeColHexUnsaved();
+    if (st == PatchByteSaved)
+        return ThemeColHexSaved();
     return 0;
 }
 
@@ -422,9 +407,6 @@ static void UpdateSelFromMouse()
 
 void HexViewReset()
 {
-    g_orig.clear();
-    g_unsaved.clear();
-    g_saved.clear();
     g_anchor = g_sel_end = (size_t)-1;
     g_goto = (size_t)-1;
     g_drag = false;
@@ -436,18 +418,13 @@ void HexViewReset()
     g_ed.DataEditingAddr = g_ed.DataPreviewAddr = (size_t)-1;
 }
 
-void HexViewOpen(const uint8_t* data, size_t n)
+void HexViewOpen(const uint8_t*, size_t)
 {
     HexViewReset();
-    if (data && n)
-        g_orig.assign(data, data + n);
 }
 
 void HexViewOnSaved()
 {
-    for (size_t off : g_unsaved)
-        g_saved.insert(off);
-    g_unsaved.clear();
 }
 
 void HexViewGoto(size_t off)
@@ -466,8 +443,6 @@ void HexViewDraw()
         ImGui::TextUnformatted(I18nGet("pe.none"));
         return;
     }
-    if (g_orig.size() != n)
-        HexViewOpen(b, n);
 
     if (!g_primed)
     {
@@ -491,7 +466,26 @@ void HexViewDraw()
     }
 
     ImGuiIO& io = ImGui::GetIO();
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && io.KeyCtrl &&
+    bool hex_win = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    bool cell = g_ed.DataEditingAddr != (size_t)-1;
+    bool search_text = io.WantTextInput && !cell;
+    if (hex_win && !search_text)
+    {
+        ImGuiInputFlags zflags = ImGuiInputFlags_RouteFocused;
+        if (cell)
+            zflags = ImGuiInputFlags_RouteGlobal | ImGuiInputFlags_RouteOverActive;
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, zflags))
+        {
+            if (PatchUndo())
+                InspectorNoteHexWrite();
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, zflags))
+        {
+            if (PatchRedo())
+                InspectorNoteHexWrite();
+        }
+    }
+    if (hex_win && io.KeyCtrl &&
         ImGui::IsKeyPressed(ImGuiKey_F, false) && !io.WantTextInput)
         g_focus_search = true;
 

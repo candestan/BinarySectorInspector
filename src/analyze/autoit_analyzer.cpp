@@ -358,6 +358,19 @@ static bool AnalyzeAutoIt(PeFile* pe, const uint8_t* data, size_t n)
             AnalyzeAddProp(&ch, "note", "tokenized_or_encrypted");
             snprintf(ch.status_i18n, sizeof(ch.status_i18n), "pe.analysis_not_source");
         }
+        bool text = ch.size && (uint64_t)ch.file_off + ch.size <= n &&
+            !r.compressed && AnalyzeLooksText(data + ch.file_off, ch.size);
+        if (text)
+        {
+            AnalyzeSetMedia(&ch, "script.text");
+            char sug[160];
+            snprintf(sug, sizeof(sug), "%s", r.name[0] ? r.name : "script");
+            if (!strchr(sug, '.'))
+                strncat_s(sug, ".au3", _TRUNCATE);
+            AnalyzeAddRawExport(&ch, "script", "pe.analysis_dump_script", sug, ch.file_off, ch.size);
+        }
+        else
+            AnalyzeSetMedia(&ch, "bytes.raw");
         char sug[160];
         snprintf(sug, sizeof(sug), "autoit_%d.bin", i);
         AnalyzeAddRawExport(&ch, "payload", "pe.analysis_dump_raw", sug, ch.file_off, ch.size);

@@ -11,6 +11,7 @@
 #include "persist/settings.h"
 #include "log/log.h"
 #include "detect/detect.h"
+#include "plugin/plugin.h"
 #include "pe/pe.h"
 
 #include "imgui.h"
@@ -27,6 +28,7 @@ enum
     SettingsTabConsole,
     SettingsTabPerformance,
     SettingsTabThemes,
+    SettingsTabPlugins,
 };
 
 static void DetectReapplyOpenFile()
@@ -458,6 +460,52 @@ static void DrawThemes()
     }
 }
 
+static void DrawPlugins()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.plugins"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.plugins_hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    if (UiButton(I18nGet("plugin.rescan")))
+        PluginRescan();
+    ImGui::Spacing();
+    int n = PluginCount();
+    if (n == 0)
+    {
+        ImGui::TextUnformatted(I18nGet("plugin.none"));
+        return;
+    }
+    for (int i = 0; i < n; i++)
+    {
+        ImGui::PushID(i);
+        bool on = PluginEnabled(i);
+        char lab[160];
+        snprintf(lab, sizeof(lab), "%s  %s", PluginName(i), PluginVersion(i));
+        if (UiCheckbox("en", lab, &on) && on != PluginEnabled(i))
+            PluginSetEnabled(i, on);
+        ImGui::Indent();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        if (PluginAuthor(i)[0])
+            ImGui::Text("%s %s", I18nGet("settings.made_by"), PluginAuthor(i));
+        if (PluginDescription(i)[0])
+            ImGui::TextWrapped("%s", PluginDescription(i));
+        ImGui::TextUnformatted(PluginId(i));
+        ImGui::TextUnformatted(PluginPath(i));
+        if (PluginError(i)[0])
+            ImGui::TextUnformatted(PluginError(i));
+        ImGui::PopStyleColor();
+        ImGui::Unindent();
+        ImGui::Spacing();
+        ImGui::PopID();
+    }
+}
+
 void SettingsPageDraw()
 {
     float enter = UiEnter(0.f, 0.32f);
@@ -485,11 +533,15 @@ void SettingsPageDraw()
         g_tab = SettingsTabPerformance;
     if (NavTab("tab_themes", I18nGet("settings.themes"), g_tab == SettingsTabThemes))
         g_tab = SettingsTabThemes;
+    if (NavTab("tab_plugins", I18nGet("settings.plugins"), g_tab == SettingsTabPlugins))
+        g_tab = SettingsTabPlugins;
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
     if (g_tab == SettingsTabThemes)
         DrawThemes();
+    else if (g_tab == SettingsTabPlugins)
+        DrawPlugins();
     else if (g_tab == SettingsTabConsole)
         DrawConsole();
     else if (g_tab == SettingsTabDetection)

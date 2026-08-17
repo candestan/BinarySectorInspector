@@ -12,6 +12,9 @@
 #include "persist/settings.h"
 
 #include "ui/hex_view.h"
+#include "pe/patch.h"
+#include "plugin/plugin.h"
+#include "tool/tool.h"
 #include "imgui.h"
 
 #include <windows.h>
@@ -23,6 +26,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <ctype.h>
 
@@ -45,10 +49,12 @@ static int g_exp_sel;
 static char g_str_filter[128];
 static char g_imp_filter[128];
 static char g_exp_filter[128];
-static int g_save_phase; // 0 idle, 1 spinning, 2 summary
+static int g_save_phase; // 0 idle, 1 spinning, 2 summary, 3 backup-fail confirm
 static float g_save_t;
 static bool g_save_wrote;
 static bool g_save_ok;
+static bool g_save_skip_backup;
+static int g_patch_row = -1;
 static char g_save_dst[MAX_PATH];
 static char g_con[14][192];
 static int g_con_n;
@@ -197,6 +203,7 @@ static void DoSave(bool save_as)
     g_save_t = 0.f;
     g_save_wrote = false;
     g_save_ok = false;
+    g_save_skip_backup = false;
     ConClear();
     ConLog(I18nGet("save.log_hold"));
 }
@@ -530,7 +537,7 @@ static void DrawMenubar()
     bool ready = PeJobResult() != nullptr && !busy;
     bool locked = g_save_phase != 0;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemePx(5.f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemeMenuPadY()));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(2.f), 0.f));
 
     if (TopMenu("file", I18nGet("menu.file")))
@@ -576,9 +583,19 @@ static void DrawMenubar()
     {
         if (ImGui::MenuItem(I18nGet("pe.hex"), nullptr, false, ready && !locked))
             InspectorSelect("hex");
+        if (ImGui::MenuItem(I18nGet("patch.title"), nullptr, false, ready && !locked))
+            InspectorSelect("changes");
         ImGui::Separator();
-        ImGui::MenuItem(I18nGet("menu.undo"), "Ctrl+Z", false, false);
-        UiTipWhenDisabled(I18nGet("menu.undo_none"));
+        if (ImGui::MenuItem(I18nGet("patch.undo"), "Ctrl+Z", false, ready && !locked && PatchCanUndo()))
+        {
+            PatchUndo();
+            MarkDirt(DirtHex);
+        }
+        if (ImGui::MenuItem(I18nGet("patch.redo"), "Ctrl+Y", false, ready && !locked && PatchCanRedo()))
+        {
+            PatchRedo();
+            MarkDirt(DirtHex);
+        }
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -604,6 +621,18 @@ static void DrawMenubar()
             "view.tree", "view.tree_dock", "view.tree_pri", "view.tree_w");
         ViewDockMenu(I18nGet("view.console"), &g_cons_on, &g_cons_dock, &g_cons_pri,
             "view.console", "view.console_dock", "view.console_pri", "view.console_h");
+        int pv = PluginViewCount();
+        if (pv > 0)
+        {
+            ImGui::Separator();
+            for (int i = 0; i < pv; i++)
+            {
+                char id[32];
+                PluginViewSelId(i, id, (int)sizeof(id));
+                if (ImGui::MenuItem(PluginViewLabel(i), nullptr, false, ready && !locked))
+                    InspectorSelect(id);
+            }
+        }
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -620,6 +649,12 @@ static void DrawMenubar()
             InspectorSelect("rsrc");
             g_rsrc_kind = 0;
         }
+        TopMenuEnd();
+    }
+    ImGui::SameLine(0.f, 0.f);
+    if (TopMenu("tools", I18nGet("menu.tools")))
+    {
+        PluginDrawToolsMenu(ready, locked);
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -1189,6 +1224,149 @@ static void DrawHex()
     HexViewDraw();
 }
 
+static const char* PatchStatusKey(const PatchOp& op, const uint8_t* cur, size_t n)
+{
+    if (op.kind == PatchKindSaveMarker)
+        return "patch.status.save";
+    if (!cur || (uint64_t)op.offset + op.after.size() > n)
+        return "patch.status.unsaved";
+    bool now_after = memcmp(cur + op.offset, op.after.data(), op.after.size()) == 0;
+    PatchByteState st = PatchColor(op.offset, cur[op.offset]);
+    if (now_after && st == PatchByteSaved)
+        return "patch.status.saved";
+    if (now_after && st == PatchByteUnsaved)
+        return "patch.status.unsaved";
+    if (st == PatchByteUnsaved)
+        return "patch.status.unsaved";
+    if (st == PatchByteSaved)
+        return "patch.status.saved";
+    return "patch.status.reverted";
+}
+
+static void DrawChanges()
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("patch.hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    if (UiButton(I18nGet("patch.undo")) && PatchCanUndo())
+    {
+        PatchUndo();
+        MarkDirt(DirtHex);
+    }
+    ImGui::SameLine();
+    if (UiButton(I18nGet("patch.redo")) && PatchCanRedo())
+    {
+        PatchRedo();
+        MarkDirt(DirtHex);
+    }
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !ImGui::GetIO().WantTextInput)
+    {
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z, ImGuiInputFlags_RouteFocused) && PatchCanUndo())
+        {
+            PatchUndo();
+            MarkDirt(DirtHex);
+        }
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y, ImGuiInputFlags_RouteFocused) && PatchCanRedo())
+        {
+            PatchRedo();
+            MarkDirt(DirtHex);
+        }
+    }
+
+    const std::vector<PatchOp>& hist = PatchHistory();
+    size_t n = 0;
+    uint8_t* cur = PeJobBytes(&n);
+    ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_HighlightHoveredColumn;
+    ImVec2 sz(0.f, ImGui::GetContentRegionAvail().y);
+    if (sz.y < ThemePx(120.f))
+        sz.y = ThemePx(120.f);
+    if (!ImGui::BeginTable("patchhist", 6, flags, sz))
+        return;
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn(I18nGet("patch.col.seq"), ImGuiTableColumnFlags_WidthFixed, ThemePx(56.f));
+    ImGui::TableSetupColumn(I18nGet("patch.col.addr"));
+    ImGui::TableSetupColumn(I18nGet("patch.col.before"));
+    ImGui::TableSetupColumn(I18nGet("patch.col.after"));
+    ImGui::TableSetupColumn(I18nGet("patch.col.status"));
+    ImGui::TableSetupColumn(I18nGet("patch.col.source"));
+    ImGui::TableHeadersRow();
+
+    for (int i = 0; i < (int)hist.size(); i++)
+    {
+        const PatchOp& op = hist[(size_t)i];
+        ImGui::PushID(i);
+        ImGui::TableNextRow(ImGuiTableRowFlags_None, ThemeRowH());
+        ImGui::TableSetColumnIndex(0);
+        char seq[16];
+        snprintf(seq, sizeof(seq), "%llu", (unsigned long long)op.seq);
+        bool sel = g_patch_row == i;
+        if (ImGui::Selectable(seq, sel, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
+            ImVec2(0.f, ThemeRowH() - ThemePx(4.f))))
+            g_patch_row = i;
+        if (ImGui::IsItemHovered())
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        if (UiBeginPopupContextItem("pctx"))
+        {
+            if (op.kind == PatchKindBytes && ImGui::MenuItem(I18nGet("pe.analysis_hex")))
+                GoHex(op.offset);
+            char clip[256];
+            if (op.kind == PatchKindBytes)
+            {
+                char ba[64], aa[64];
+                PatchFmtBytes(op.before, ba, (int)sizeof(ba));
+                PatchFmtBytes(op.after, aa, (int)sizeof(aa));
+                if (op.rva)
+                    snprintf(clip, sizeof(clip), "File 0x%X / RVA 0x%X: %s -> %s", op.offset, op.rva, ba, aa);
+                else
+                    snprintf(clip, sizeof(clip), "File 0x%X: %s -> %s", op.offset, ba, aa);
+                if (ImGui::MenuItem(I18nGet("patch.copy")))
+                    ImGui::SetClipboardText(clip);
+            }
+            if (op.kind == PatchKindBytes && PatchCanUndo() &&
+                !PatchHistory().empty() && ImGui::MenuItem(I18nGet("patch.undo_op")))
+            {
+                if (PatchUndoSeq(op.seq))
+                    MarkDirt(DirtHex);
+            }
+            UiEndPopup();
+        }
+        ImGui::TableSetColumnIndex(1);
+        if (op.kind == PatchKindSaveMarker)
+            ImGui::TextUnformatted(I18nGet("patch.status.save"));
+        else if (op.rva)
+            ImGui::Text("0x%X / RVA 0x%X", op.offset, op.rva);
+        else
+            ImGui::Text("0x%X", op.offset);
+        ImGui::TableSetColumnIndex(2);
+        if (op.kind == PatchKindBytes)
+        {
+            char ba[64];
+            PatchFmtBytes(op.before, ba, (int)sizeof(ba));
+            ImGui::TextUnformatted(ba);
+        }
+        ImGui::TableSetColumnIndex(3);
+        if (op.kind == PatchKindBytes)
+        {
+            char aa[64];
+            PatchFmtBytes(op.after, aa, (int)sizeof(aa));
+            ImGui::TextUnformatted(aa);
+        }
+        ImGui::TableSetColumnIndex(4);
+        ImGui::TextUnformatted(I18nGet(PatchStatusKey(op, cur, n)));
+        ImGui::TableSetColumnIndex(5);
+        if (op.kind == PatchKindBytes)
+            ImGui::TextUnformatted(I18nGet(PatchSourceI18n(op.source)));
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) && op.kind == PatchKindBytes)
+            GoHex(op.offset);
+        ImGui::PopID();
+    }
+    ImGui::EndTable();
+}
+
 static const char* AnalysisKindKey(AnalysisKind k)
 {
     switch (k)
@@ -1218,6 +1396,12 @@ static const wchar_t* ExportFilter(const char* suggest)
         return L"Text\0*.txt\0All\0*.*\0";
     if (ext && _stricmp(ext, ".pyc") == 0)
         return L"Python bytecode\0*.pyc\0All\0*.*\0";
+    if (ext && _stricmp(ext, ".py") == 0)
+        return L"Python\0*.py\0All\0*.*\0";
+    if (ext && _stricmp(ext, ".au3") == 0)
+        return L"AutoIt script\0*.au3\0All\0*.*\0";
+    if (ext && _stricmp(ext, ".ahk") == 0)
+        return L"AutoHotkey script\0*.ahk\0All\0*.*\0";
     if (ext && (_stricmp(ext, ".bin") == 0 || _stricmp(ext, ".dat") == 0))
         return L"Binary\0*.bin\0All\0*.*\0";
     return L"All\0*.*\0";
@@ -1242,19 +1426,75 @@ static void DumpAnalysisExport(const PeFile* pe, const AnalysisArtifact* art, co
     LogInfo(LogBuiltinUI, "Dump %s: %s", art->label, ok ? path : "failed");
 }
 
+static bool WriteUtf8File(const char* path, const std::string& body)
+{
+    wchar_t wpath[MAX_PATH];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH))
+        return false;
+    HANDLE h = CreateFileW(wpath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    DWORD wr = 0;
+    BOOL ok = WriteFile(h, body.data(), (DWORD)body.size(), &wr, nullptr);
+    CloseHandle(h);
+    return ok && wr == (DWORD)body.size();
+}
+
+static void RunToolOnArt(const PeFile* pe, const AnalysisArtifact* art, const ToolDescriptor* tool)
+{
+    if (!pe || !art || !tool || !tool->run)
+        return;
+    size_t n = 0;
+    uint8_t* b = PeJobBytes(&n);
+    std::string out;
+    char sug[160] = "out.txt";
+    char err[64] = "tool.decompile_fail";
+    if (!tool->run(art, b, n, &out, sug, (int)sizeof(sug), err, (int)sizeof(err)))
+    {
+        snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet(err[0] ? err : "tool.decompile_fail"));
+        return;
+    }
+    char path[MAX_PATH];
+    const char* title_u8 = I18nGet(tool->action_i18n ? tool->action_i18n : "tool.decompile");
+    wchar_t title[80];
+    if (!MultiByteToWideChar(CP_UTF8, 0, title_u8, -1, title, 80))
+        wcscpy_s(title, L"Export");
+    if (!AppPickSaveFilter(path, MAX_PATH, ExportFilter(sug), title, sug))
+        return;
+    bool ok = WriteUtf8File(path, out);
+    snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet(ok ? "pe.analysis_dumped" : "pe.save_fail"));
+}
+
 static void DrawArtifactExports(const PeFile* pe, const AnalysisArtifact* art)
 {
-    if (!pe || !art || art->exports.empty())
+    if (!pe || !art)
         return;
+    int btn = 0;
     for (int i = 0; i < (int)art->exports.size(); i++)
     {
         const AnalysisExport& ex = art->exports[i];
         const char* lab = I18nGet(ex.i18n_key[0] ? ex.i18n_key : "pe.analysis_dump_raw");
         ImGui::PushID(i);
-        if (i)
+        if (btn)
             ImGui::SameLine();
         if (UiButton(lab))
             DumpAnalysisExport(pe, art, &ex);
+        btn++;
+        ImGui::PopID();
+    }
+    const ToolDescriptor* tools[8];
+    int tn = ToolMatchMedia(art->media, tools, 8);
+    for (int i = 0; i < tn; i++)
+    {
+        ImGui::PushID(1000 + i);
+        if (btn)
+            ImGui::SameLine();
+        const char* lab = I18nGet(tools[i]->action_i18n ? tools[i]->action_i18n : "tool.action");
+        if (UiButton(lab))
+            RunToolOnArt(pe, art, tools[i]);
+        if (ImGui::IsItemHovered())
+            UiTooltip(tools[i]->description);
+        btn++;
         ImGui::PopID();
     }
 }
@@ -2425,6 +2665,8 @@ static void DrawDetail(PeFile* pe)
     }
     if (strcmp(g_sel, "rsrc") == 0) { DrawRsrc(pe); return; }
     if (strcmp(g_sel, "hex") == 0) { DrawHex(); return; }
+    if (strcmp(g_sel, "changes") == 0) { DrawChanges(); return; }
+    if (PluginSelIsView(g_sel)) { PluginDrawView(g_sel); return; }
     if (strcmp(g_sel, "overlay") == 0)
     {
         FieldU("Offset", pe->overlay_off, true, I18nGet("help.fld.rsrcoff"));
@@ -2457,6 +2699,7 @@ static void DrawTree(const PeFile* pe)
     if (!pe->findings.empty())
         Node("findings", I18nGet("pe.findings"), IconEye, true, false);
     Node("hex", I18nGet("pe.hex"), IconHex, true, (g_dirt & DirtHex) != 0);
+    Node("changes", I18nGet("patch.title"), IconEdit, true, (g_dirt & DirtHex) != 0);
     if (pe->has_resource || pe->has_com || !pe->typelibs.empty() || !pe->versions.empty() || !pe->icons.empty())
     {
         bool rdirty = (g_dirt & (DirtVer | DirtIco | DirtCom)) != 0;
@@ -2464,11 +2707,20 @@ static void DrawTree(const PeFile* pe)
     }
     if (pe->overlay_size)
         Node("overlay", "Overlay", IconFile, true, false);
+    int pv = PluginViewCount();
+    for (int i = 0; i < pv; i++)
+    {
+        char id[32];
+        PluginViewSelId(i, id, (int)sizeof(id));
+        Node(id, PluginViewLabel(i), IconSearch, true, false);
+    }
 }
 
 static bool PaneDirty()
 {
     if (strcmp(g_sel, "hex") == 0)
+        return (g_dirt & DirtHex) != 0;
+    if (strcmp(g_sel, "changes") == 0)
         return (g_dirt & DirtHex) != 0;
     if (strcmp(g_sel, "rsrc") == 0)
     {
@@ -2484,6 +2736,8 @@ static void TickSave()
 {
     if (!g_save_phase)
         return;
+    if (g_save_phase == 3)
+        return;
     g_save_t += ImGui::GetIO().DeltaTime;
     if (g_save_phase == 1)
     {
@@ -2491,8 +2745,23 @@ static void TickSave()
             ConLog(I18nGet("save.log_image"));
         if (g_save_t > 0.68f && !g_save_wrote)
         {
-            g_save_ok = PeJobSave(g_save_dst);
+            PeSaveStatus st = PeJobSaveEx(g_save_dst, g_save_skip_backup);
             g_save_wrote = true;
+            if (st == PeSaveBackupFailed)
+            {
+                ConLog(I18nGet("pe.backup_fail"));
+                g_save_ok = false;
+                g_save_phase = 3;
+                g_save_t = 0.f;
+                return;
+            }
+            g_save_ok = (st == PeSaveOk);
+            if (g_save_ok && PeJobBackupPath()[0])
+            {
+                char line[192];
+                snprintf(line, sizeof(line), "%s  %s", I18nGet("pe.backup_ok"), FileNameOf(PeJobBackupPath()));
+                ConLog(line);
+            }
             ConLog(g_save_ok ? I18nGet("save.log_flush") : I18nGet("pe.save_fail"));
         }
         if (g_save_t > 1.12f && g_save_wrote)
@@ -2523,7 +2792,7 @@ static void DrawSaveOverlay()
     ImVec2 ws = ImGui::GetWindowSize();
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     float dim_t = 1.f;
-    if (UiAnimEnabled())
+    if (UiAnimEnabled() && g_save_phase != 3)
     {
         if (g_save_phase == 1)
             dim_t = UiEaseOut(g_save_t / 0.25f);
@@ -2541,6 +2810,30 @@ static void DrawSaveOverlay()
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBackground |
         ImGuiWindowFlags_NoNav);
+
+    if (g_save_phase == 3)
+    {
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        ImGui::SetCursorPos(ImVec2(avail.x * 0.18f, avail.y * 0.32f));
+        ImGui::BeginChild("##bakfail", ImVec2(avail.x * 0.64f, ThemePx(180.f)), ImGuiChildFlags_None);
+        ImGui::TextWrapped("%s", I18nGet("pe.backup_fail_detail"));
+        ImGui::Spacing();
+        if (UiButton(I18nGet("pe.save_anyway"), ImVec2(0, 0), 1))
+        {
+            g_save_skip_backup = true;
+            g_save_phase = 1;
+            g_save_t = 0.60f;
+            g_save_wrote = false;
+            ConLog(I18nGet("pe.save_anyway"));
+        }
+        ImGui::SameLine();
+        if (UiButton(I18nGet("pe.save_cancel")))
+            g_save_phase = 0;
+        ImGui::EndChild();
+        ImGui::End();
+        return;
+    }
+
     ImGui::Dummy(ImGui::GetContentRegionAvail());
 
     ImVec2 c(wp.x + ws.x * 0.5f, wp.y + ws.y * 0.36f);
@@ -2674,6 +2967,8 @@ static void FillBody()
     }
     else if (PeFile* pe = PeJobResultMut())
         DrawDetail(pe);
+    else if (PluginSelIsView(g_sel))
+        PluginDrawView(g_sel);
     ImGui::PopStyleVar();
 }
 
@@ -2811,6 +3106,8 @@ static const char* SelCaption()
     if (strcmp(g_sel, "overview") == 0) return I18nGet("pe.overview");
     if (strcmp(g_sel, "headers") == 0) return I18nGet("pe.headers");
     if (strcmp(g_sel, "hex") == 0) return I18nGet("pe.hex");
+    if (strcmp(g_sel, "changes") == 0) return I18nGet("patch.title");
+    if (PluginSelIsView(g_sel)) return PluginViewLabel(atoi(g_sel + 6));
     if (strcmp(g_sel, "rsrc") == 0) return I18nGet("pe.resources");
     if (strcmp(g_sel, "imports") == 0) return I18nGet("pe.imports");
     if (strcmp(g_sel, "exports") == 0) return I18nGet("pe.exports");

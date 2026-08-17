@@ -871,6 +871,9 @@ static void PublishBundle(PeFile* pe, const PyBundle& py)
         ch.file_off = c.marshal_off;
         ch.size = c.marshal_size;
         ch.flag_main = c.is_main;
+        ch.extra = py.pyc_magic;
+        ch.extra2 = ((uint32_t)py.py_major << 8) | (uint32_t)(py.py_minor & 0xff);
+        AnalyzeSetMedia(&ch, "python.bytecode");
         if (c.filename[0])
             AnalyzeAddProp(&ch, "filename", c.filename);
         if (c.name[0])

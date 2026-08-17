@@ -41,6 +41,33 @@ void AnalyzeStamp(AnalysisArtifact* art, const char* provider_id, const char* gr
     snprintf(art->group, sizeof(art->group), "%s", group ? group : "");
 }
 
+void AnalyzeSetMedia(AnalysisArtifact* art, const char* media)
+{
+    if (!art)
+        return;
+    snprintf(art->media, sizeof(art->media), "%s", media ? media : "");
+}
+
+bool AnalyzeLooksText(const uint8_t* p, uint32_t n)
+{
+    if (!p || n < 8)
+        return false;
+    uint32_t chk = n > 2048 ? 2048 : n;
+    uint32_t ok = 0;
+    uint32_t zeros = 0;
+    for (uint32_t i = 0; i < chk; i++)
+    {
+        uint8_t c = p[i];
+        if (c == 0)
+            zeros++;
+        if (c == '\t' || c == '\n' || c == '\r' || (c >= 32 && c < 127))
+            ok++;
+    }
+    if (zeros * 3 >= chk && zeros * 2 <= chk)
+        return ok * 2 >= chk;
+    return ok * 10 >= chk * 8;
+}
+
 void AnalyzeAddProp(AnalysisArtifact* art, const char* key, const char* value)
 {
     if (!art || !key || !key[0])

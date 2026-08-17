@@ -10,6 +10,8 @@
 #include "persist/settings.h"
 #include "pe/pe.h"
 #include "detect/detect.h"
+#include "plugin/plugin.h"
+#include "tool/tool.h"
 #include "log/log.h"
 #include "platform/window_process.h"
 #include "imgui.h"
@@ -37,11 +39,14 @@ void AppInit()
     ThemePackInit();
     LogInit();
     DetectInit();
+    ToolInit();
+    PluginInit();
 }
 
 void AppShutdown()
 {
     PeJobShutdown();
+    PluginShutdown();
     DetectShutdown();
     LogShutdown();
 }
