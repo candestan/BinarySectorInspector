@@ -40,6 +40,9 @@
     <Filter Include="plugin">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="runtime">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -125,6 +128,9 @@
     </ClCompile>
     <ClCompile Include="src\plugin\plugin.cpp">
       <Filter>plugin</Filter>
+    </ClCompile>
+    <ClCompile Include="src\runtime\scripting.cpp">
+      <Filter>runtime</Filter>
     </ClCompile>
     <ClCompile Include="src\detect\detect.cpp">
       <Filter>detect</Filter>
@@ -229,6 +235,12 @@
     </ClInclude>
     <ClInclude Include="src\plugin\bsi_plugin_abi.h">
       <Filter>plugin</Filter>
+    </ClInclude>
+    <ClInclude Include="sdk\plugin\bsi_plugin.h">
+      <Filter>plugin</Filter>
+    </ClInclude>
+    <ClInclude Include="src\runtime\scripting.h">
+      <Filter>runtime</Filter>
     </ClInclude>
     <ClInclude Include="src\analyze\analyze.h">
       <Filter>analyze</Filter>

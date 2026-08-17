@@ -5,15 +5,20 @@
 #include "log/log.h"
 #include "persist/paths.h"
 #include "persist/settings.h"
+#include "runtime/scripting.h"
 #include "i18n/i18n.h"
 #include "ui/widgets.h"
+#include "ui/theme.h"
+#include "ui/hex_view.h"
 
 #include "imgui.h"
+#include <nlohmann/json.hpp>
 
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <vector>
 #include <string>
 
@@ -27,7 +32,10 @@ typedef int  (*FnToolInfo)(int, BsiToolInfo*);
 typedef int  (*FnToolRun)(int);
 typedef int  (*FnViewCount)(void);
 typedef int  (*FnViewInfo)(int, BsiViewInfo*);
-typedef int  (*FnViewDraw)(int);
+typedef int  (*FnViewDraw)(int, const BsiUi*);
+typedef int  (*FnHasSettings)(void);
+typedef void (*FnDrawSettings)(const BsiUi*);
+typedef void (*FnOnJob)(int);
 
 struct PluginRec
 {
@@ -52,6 +60,9 @@ struct PluginRec
     FnViewCount view_count;
     FnViewInfo  view_info;
     FnViewDraw  view_draw;
+    FnHasSettings has_settings;
+    FnDrawSettings draw_settings;
+    FnOnJob     on_job;
 };
 
 static std::vector<PluginRec> g_plugins;
@@ -87,7 +98,7 @@ static int RecReady(void*)
     return PeJobResult() && !PeJobBusy() ? 1 : 0;
 }
 
-static const char* RecPath(void*)
+static const char* RecJobPath(void*)
 {
     return PeJobPath();
 }
@@ -176,28 +187,59 @@ static int RecArtAt(void*, const char* media, int index,
     return 1;
 }
 
+static void FilterFromExt(const char* ext, wchar_t* out, int cap)
+{
+    memset(out, 0, (size_t)cap * sizeof(wchar_t));
+    if (cap < 24)
+        return;
+    const char* e = ext;
+    if (e && e[0] == '.')
+        e++;
+    if (!e || !e[0] || _stricmp(e, "*") == 0 || _stricmp(e, "all") == 0)
+    {
+        static const wchar_t k[] = L"All\0*.*\0";
+        memcpy(out, k, sizeof(k));
+        return;
+    }
+    wchar_t we[32]{};
+    if (!MultiByteToWideChar(CP_UTF8, 0, e, -1, we, 32) || !we[0])
+    {
+        static const wchar_t k[] = L"All\0*.*\0";
+        memcpy(out, k, sizeof(k));
+        return;
+    }
+    wchar_t* p = out;
+    wchar_t* end = out + cap - 2;
+    auto put = [&](const wchar_t* s) {
+        while (s && *s && p < end)
+            *p++ = *s++;
+    };
+    put(we);
+    if (p < end)
+        *p++ = 0;
+    if (p < end)
+        *p++ = L'*';
+    if (p < end)
+        *p++ = L'.';
+    put(we);
+    if (p < end)
+        *p++ = 0;
+    put(L"All");
+    if (p < end)
+        *p++ = 0;
+    put(L"*.*");
+    if (p < end)
+        *p++ = 0;
+}
+
 static int RecSaveDialog(void*, const char* ext, const char* title, const char* suggest,
     char* out_path, int out_cap)
 {
     if (!out_path || out_cap < 8)
         return 0;
-    wchar_t filter[128]{};
+    wchar_t filter[160]{};
     wchar_t wtitle[80];
-    if (ext && _stricmp(ext, "py") == 0)
-    {
-        static const wchar_t k[] = L"Python\0*.py\0All\0*.*\0";
-        memcpy(filter, k, sizeof(k));
-    }
-    else if (ext && _stricmp(ext, "pyc") == 0)
-    {
-        static const wchar_t k[] = L"Python bytecode\0*.pyc\0All\0*.*\0";
-        memcpy(filter, k, sizeof(k));
-    }
-    else
-    {
-        static const wchar_t k[] = L"All\0*.*\0";
-        memcpy(filter, k, sizeof(k));
-    }
+    FilterFromExt(ext, filter, 160);
     const char* t = title && title[0] ? title : "Export";
     if (!MultiByteToWideChar(CP_UTF8, 0, t, -1, wtitle, 80))
         wcscpy_s(wtitle, L"Export");
@@ -224,6 +266,731 @@ static int RecWriteFile(void*, const char* path, const void* data, uint32_t n)
     return ok && wr == n ? 1 : 0;
 }
 
+static const int kMaxJson = 64;
+static nlohmann::json g_json[kMaxJson];
+static uint8_t g_json_live[kMaxJson];
+
+static uint32_t JsonAlloc(nlohmann::json&& j)
+{
+    for (int i = 0; i < kMaxJson; i++)
+    {
+        if (!g_json_live[i])
+        {
+            g_json[i] = std::move(j);
+            g_json_live[i] = 1;
+            return (uint32_t)(i + 1);
+        }
+    }
+    return 0;
+}
+
+static nlohmann::json* JsonAt(uint32_t h)
+{
+    if (!h || h > (uint32_t)kMaxJson || !g_json_live[h - 1])
+        return nullptr;
+    return &g_json[h - 1];
+}
+
+static std::string JsonPtr(const char* path)
+{
+    if (!path || !path[0])
+        return "";
+    if (path[0] == '/')
+        return path;
+    std::string s = "/";
+    for (const char* c = path; *c; c++)
+        s.push_back(*c == '.' ? '/' : *c);
+    return s;
+}
+
+static nlohmann::json* JsonWalk(uint32_t h, const char* path, bool create)
+{
+    nlohmann::json* j = JsonAt(h);
+    if (!j)
+        return nullptr;
+    std::string p = JsonPtr(path);
+    if (p.empty())
+        return j;
+    try
+    {
+        auto ptr = nlohmann::json::json_pointer(p);
+        if (create)
+            return &((*j)[ptr]);
+        return &(j->at(ptr));
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+static int RecHostPath(void* ctx, const char* key, char* out, int cap)
+{
+    if (!out || cap < 4)
+        return 0;
+    out[0] = 0;
+    if (!key || !key[0])
+        return 0;
+    PluginRec* p = (PluginRec*)ctx;
+    if (_stricmp(key, "exe") == 0)
+        PathsExeDir(out, cap);
+    else if (_stricmp(key, "plugins") == 0)
+        PathsBesideExe(out, cap, "plugins");
+    else if (_stricmp(key, "themes") == 0)
+        PathsThemesDir(out, cap);
+    else if (_stricmp(key, "languages") == 0)
+        PathsLanguagesDir(out, cap);
+    else if (_stricmp(key, "settings") == 0)
+        PathsSettingsFile(out, cap);
+    else if (_stricmp(key, "assets") == 0)
+        PathsBesideExe(out, cap, "assets");
+    else if (_stricmp(key, "python2") == 0)
+        ScriptingPyGet(2, out, cap);
+    else if (_stricmp(key, "python3") == 0)
+        ScriptingPyGet(3, out, cap);
+    else if (_stricmp(key, "lua") == 0)
+        ScriptingLuaGet(out, cap);
+    else if (_stricmp(key, "self") == 0 && p)
+        snprintf(out, cap, "%s", p->path);
+    else if (_stricmp(key, "data") == 0 && p && p->id[0])
+    {
+        int ok = 1;
+        for (const char* c = p->id; *c; c++)
+        {
+            if (!isalnum((unsigned char)*c) && *c != '.' && *c != '_' && *c != '-')
+            {
+                ok = 0;
+                break;
+            }
+        }
+        if (!ok)
+            return 0;
+        char root[MAX_PATH];
+        PathsBesideExe(root, MAX_PATH, "plugins\\data");
+        CreateDirectoryA(root, nullptr);
+        char rel[MAX_PATH];
+        snprintf(rel, sizeof(rel), "plugins\\data\\%s", p->id);
+        PathsBesideExe(out, cap, rel);
+        CreateDirectoryA(out, nullptr);
+        size_t n = strlen(out);
+        if (n && out[n - 1] != '\\' && (int)n + 2 < cap)
+        {
+            out[n] = '\\';
+            out[n + 1] = 0;
+        }
+    }
+    else
+        return 0;
+    return out[0] ? 1 : 0;
+}
+
+static int CfgKey(PluginRec* p, const char* key, char* out, int cap)
+{
+    if (!p || !key || !key[0] || !out || cap < 8)
+        return 0;
+    if (strchr(key, '\\') || strstr(key, ".."))
+        return 0;
+    snprintf(out, cap, "plugin.cfg.%s.%s", p->id, key);
+    return 1;
+}
+
+static int RecSettingGet(void* ctx, const char* key, char* out, int cap, const char* def)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return 0;
+    return SettingsGetString(full, out, cap, def ? def : "") ? 1 : 0;
+}
+
+static int RecSettingSet(void* ctx, const char* key, const char* val)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return 0;
+    SettingsSetString(full, val ? val : "");
+    return 1;
+}
+
+static int RecSettingGetInt(void* ctx, const char* key, int def)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return def;
+    return SettingsGetInt(full, def);
+}
+
+static void RecSettingSetInt(void* ctx, const char* key, int val)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return;
+    SettingsSetInt(full, val);
+}
+
+static int RecSettingGetBool(void* ctx, const char* key, int def)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return def;
+    return SettingsGetBool(full, def != 0) ? 1 : 0;
+}
+
+static void RecSettingSetBool(void* ctx, const char* key, int val)
+{
+    char full[192];
+    if (!CfgKey((PluginRec*)ctx, key, full, (int)sizeof(full)))
+        return;
+    SettingsSetBool(full, val != 0);
+}
+
+static uint32_t RecJsonParse(void*, const char* text, char* err, int err_cap)
+{
+    if (err && err_cap)
+        err[0] = 0;
+    if (!text)
+    {
+        if (err && err_cap)
+            snprintf(err, err_cap, "empty");
+        return 0;
+    }
+    try
+    {
+        return JsonAlloc(nlohmann::json::parse(text));
+    }
+    catch (const std::exception& e)
+    {
+        if (err && err_cap)
+            snprintf(err, err_cap, "%s", e.what());
+        return 0;
+    }
+}
+
+static uint32_t RecJsonNew(void*)
+{
+    return JsonAlloc(nlohmann::json::object());
+}
+
+static uint32_t RecJsonLoadFile(void* ctx, const char* path, char* err, int err_cap)
+{
+    if (err && err_cap)
+        err[0] = 0;
+    char* text = nullptr;
+    int n = 0;
+    if (!PathsReadFile(path, &text, &n) || !text)
+    {
+        if (err && err_cap)
+            snprintf(err, err_cap, "read failed");
+        return 0;
+    }
+    uint32_t h = RecJsonParse(ctx, text, err, err_cap);
+    free(text);
+    return h;
+}
+
+static int RecJsonSaveFile(void*, uint32_t h, const char* path)
+{
+    nlohmann::json* j = JsonAt(h);
+    if (!j || !path)
+        return 0;
+    std::string s = j->dump(2);
+    return RecWriteFile(nullptr, path, s.c_str(), (uint32_t)s.size());
+}
+
+static void RecJsonFree(void*, uint32_t h)
+{
+    if (!h || h > (uint32_t)kMaxJson)
+        return;
+    g_json[h - 1] = nlohmann::json();
+    g_json_live[h - 1] = 0;
+}
+
+static int RecJsonHas(void*, uint32_t h, const char* path)
+{
+    return JsonWalk(h, path, false) ? 1 : 0;
+}
+
+static int RecJsonSize(void*, uint32_t h, const char* path)
+{
+    nlohmann::json* n = JsonWalk(h, path, false);
+    if (!n)
+        return 0;
+    if (n->is_array() || n->is_object())
+        return (int)n->size();
+    return 0;
+}
+
+static int RecJsonGetString(void*, uint32_t h, const char* path, char* out, int cap)
+{
+    if (!out || cap < 2)
+        return 0;
+    out[0] = 0;
+    nlohmann::json* n = JsonWalk(h, path, false);
+    if (!n)
+        return 0;
+    try
+    {
+        if (n->is_string())
+            snprintf(out, cap, "%s", n->get<std::string>().c_str());
+        else if (n->is_number_integer())
+            snprintf(out, cap, "%d", n->get<int>());
+        else if (n->is_boolean())
+            snprintf(out, cap, "%s", n->get<bool>() ? "true" : "false");
+        else
+            snprintf(out, cap, "%s", n->dump().c_str());
+        return 1;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+static int RecJsonGetInt(void*, uint32_t h, const char* path, int* out)
+{
+    nlohmann::json* n = JsonWalk(h, path, false);
+    if (!n || !out)
+        return 0;
+    try
+    {
+        if (n->is_number_integer())
+            *out = n->get<int>();
+        else if (n->is_number())
+            *out = (int)n->get<double>();
+        else if (n->is_boolean())
+            *out = n->get<bool>() ? 1 : 0;
+        else
+            return 0;
+        return 1;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+static int RecJsonGetBool(void*, uint32_t h, const char* path, int* out)
+{
+    nlohmann::json* n = JsonWalk(h, path, false);
+    if (!n || !out)
+        return 0;
+    try
+    {
+        if (n->is_boolean())
+            *out = n->get<bool>() ? 1 : 0;
+        else if (n->is_number())
+            *out = n->get<int>() != 0 ? 1 : 0;
+        else
+            return 0;
+        return 1;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+static int RecJsonSetString(void*, uint32_t h, const char* path, const char* val)
+{
+    nlohmann::json* n = JsonWalk(h, path, true);
+    if (!n)
+        return 0;
+    *n = val ? val : "";
+    return 1;
+}
+
+static int RecJsonSetInt(void*, uint32_t h, const char* path, int val)
+{
+    nlohmann::json* n = JsonWalk(h, path, true);
+    if (!n)
+        return 0;
+    *n = val;
+    return 1;
+}
+
+static int RecJsonSetBool(void*, uint32_t h, const char* path, int val)
+{
+    nlohmann::json* n = JsonWalk(h, path, true);
+    if (!n)
+        return 0;
+    *n = val != 0;
+    return 1;
+}
+
+static int RecJsonDump(void*, uint32_t h, char* out, int cap)
+{
+    nlohmann::json* j = JsonAt(h);
+    if (!j)
+        return 0;
+    std::string s = j->dump(2);
+    int need = (int)s.size() + 1;
+    if (!out || cap < need)
+        return need;
+    snprintf(out, cap, "%s", s.c_str());
+    return need;
+}
+
+static const char* RecHostName(void*)
+{
+    return "BinarySectorInspector";
+}
+
+static const char* RecHostVersion(void*)
+{
+    return "0.1.0";
+}
+
+static int RecReadFile(void*, const char* path, void* buf, uint32_t cap, uint32_t* out_n)
+{
+    if (out_n)
+        *out_n = 0;
+    if (!path || !path[0])
+        return 0;
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    LARGE_INTEGER sz{};
+    if (!GetFileSizeEx(h, &sz) || sz.QuadPart < 0 || sz.QuadPart > 64 * 1024 * 1024)
+    {
+        CloseHandle(h);
+        return 0;
+    }
+    uint32_t n = (uint32_t)sz.QuadPart;
+    if (out_n)
+        *out_n = n;
+    if (!buf)
+    {
+        CloseHandle(h);
+        return 1;
+    }
+    if (cap < n)
+    {
+        CloseHandle(h);
+        return 0;
+    }
+    DWORD rd = 0;
+    BOOL ok = ReadFile(h, buf, n, &rd, nullptr);
+    CloseHandle(h);
+    return ok && rd == n ? 1 : 0;
+}
+
+static int RecOpenDialog(void*, const char* ext, const char* title, char* out_path, int out_cap)
+{
+    if (!out_path || out_cap < 8)
+        return 0;
+    wchar_t filter[160]{};
+    wchar_t wtitle[80];
+    FilterFromExt(ext, filter, 160);
+    const char* t = title && title[0] ? title : "Open";
+    if (!MultiByteToWideChar(CP_UTF8, 0, t, -1, wtitle, 80))
+        wcscpy_s(wtitle, L"Open");
+    char path[MAX_PATH];
+    if (!AppPickOpenFilter(path, MAX_PATH, filter, wtitle))
+        return 0;
+    snprintf(out_path, out_cap, "%s", path);
+    return 1;
+}
+
+static void* RecMemAlloc(void*, uint32_t n)
+{
+    if (!n)
+        return nullptr;
+    return malloc(n);
+}
+
+static void RecMemFree(void*, void* p)
+{
+    free(p);
+}
+
+static const char* RecI18nGet(void*, const char* key)
+{
+    return I18nGet(key ? key : "");
+}
+
+static int RecHexGoto(void*, uint32_t file_off)
+{
+    HexViewGoto((size_t)file_off);
+    return 1;
+}
+
+static int RecHexSelect(void*, uint32_t file_off, uint32_t size)
+{
+    HexViewSelect((size_t)file_off, (size_t)size);
+    return 1;
+}
+
+static int RecClipboardSet(void*, const char* text)
+{
+    if (!text)
+        return 0;
+    ImGui::SetClipboardText(text);
+    return 1;
+}
+
+static uint64_t RecTickMs(void*)
+{
+    return GetTickCount64();
+}
+
+static int RecOpenJob(void*, const char* path)
+{
+    if (!path || !path[0])
+        return 0;
+    AppOpenPath(path);
+    return 1;
+}
+
+static int RecDetectCount(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? (int)pe->detections.size() : 0;
+}
+
+static int RecDetectAt(void*, int index,
+    char* product_key, int key_cap,
+    char* product, int product_cap,
+    char* vendor, int vendor_cap,
+    int* category, int* confidence, int* score)
+{
+    const PeFile* pe = PeJobResult();
+    if (!pe || index < 0 || index >= (int)pe->detections.size())
+        return 0;
+    const DetectionResult& r = pe->detections[(size_t)index];
+    if (product_key && key_cap > 0)
+        snprintf(product_key, key_cap, "%s", r.product_key.c_str());
+    if (product && product_cap > 0)
+        snprintf(product, product_cap, "%s", r.product.c_str());
+    if (vendor && vendor_cap > 0)
+        snprintf(vendor, vendor_cap, "%s", r.vendor.c_str());
+    if (category)
+        *category = (int)r.category;
+    if (confidence)
+        *confidence = (int)r.confidence;
+    if (score)
+        *score = r.score;
+    return 1;
+}
+
+static int RecRsrcCount(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? (int)pe->rsrc.size() : 0;
+}
+
+static int RecRsrcAt(void*, int index,
+    char* type_name, int type_cap, char* name, int name_cap,
+    uint32_t* file_off, uint32_t* size, uint16_t* lang)
+{
+    const PeFile* pe = PeJobResult();
+    if (!pe || index < 0 || index >= (int)pe->rsrc.size())
+        return 0;
+    const PeRsrcLeaf& L = pe->rsrc[(size_t)index];
+    if (type_name && type_cap > 0)
+        snprintf(type_name, type_cap, "%s", L.type_name);
+    if (name && name_cap > 0)
+        snprintf(name, name_cap, "%s", L.name);
+    if (file_off)
+        *file_off = L.file_off;
+    if (size)
+        *size = L.size;
+    if (lang)
+        *lang = L.lang;
+    return 1;
+}
+
+static int RecSectionCount(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? pe->section_n : 0;
+}
+
+static int RecSectionAt(void*, int index,
+    char* name, int name_cap,
+    uint32_t* vaddr, uint32_t* vsize, uint32_t* rawptr, uint32_t* rawsize,
+    uint32_t* chars)
+{
+    const PeFile* pe = PeJobResult();
+    if (!pe || index < 0 || index >= pe->section_n)
+        return 0;
+    const PeSection& s = pe->sections[index];
+    if (name && name_cap > 0)
+        snprintf(name, name_cap, "%s", s.name);
+    if (vaddr)
+        *vaddr = s.vaddr;
+    if (vsize)
+        *vsize = s.vsize;
+    if (rawptr)
+        *rawptr = s.rawptr;
+    if (rawsize)
+        *rawsize = s.rawsize;
+    if (chars)
+        *chars = s.chars;
+    return 1;
+}
+
+static void UiLabel(void*, const char* text)
+{
+    if (text)
+        ImGui::TextUnformatted(text);
+}
+
+static void UiHint(void*, const char* text)
+{
+    if (!text)
+        return;
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
+static int UiBtn(void*, const char* id, const char* label)
+{
+    ImGui::PushID(id ? id : "btn");
+    int hit = UiButton(label ? label : "", ImVec2(0, 0)) ? 1 : 0;
+    ImGui::PopID();
+    return hit;
+}
+
+static int UiCheck(void*, const char* id, const char* label, int* value)
+{
+    if (!value)
+        return 0;
+    bool v = *value != 0;
+    int ch = UiCheckbox(id ? id : "chk", label ? label : "", &v) ? 1 : 0;
+    int nv = v ? 1 : 0;
+    int changed = (*value != nv) ? 1 : 0;
+    *value = nv;
+    return ch && changed ? 1 : 0;
+}
+
+static int UiInput(void*, const char* id, char* buf, int cap)
+{
+    if (!buf || cap < 2)
+        return 0;
+    ImGui::SetNextItemWidth(-1.f);
+    return ImGui::InputText(id ? id : "##in", buf, (size_t)cap) ? 1 : 0;
+}
+
+static void UiSpc(void*)
+{
+    ImGui::Spacing();
+}
+
+static void UiSec(void*, const char* title)
+{
+    UiSection(title ? title : "");
+}
+
+static void UiSameLine(void*)
+{
+    ImGui::SameLine();
+}
+
+static void UiSep(void*)
+{
+    ImGui::Separator();
+}
+
+static int UiBeginChild(void*, const char* id, float w, float h)
+{
+    return ImGui::BeginChild(id ? id : "##ch", ImVec2(w, h), ImGuiChildFlags_Borders) ? 1 : 0;
+}
+
+static void UiEndChild(void*)
+{
+    ImGui::EndChild();
+}
+
+static int UiCombo(void*, const char* id, int* index, const char* const* items, int count)
+{
+    if (!index || !items || count <= 0)
+        return 0;
+    if (*index < 0 || *index >= count)
+        *index = 0;
+    int prev = *index;
+    const char* preview = items[*index] ? items[*index] : "";
+    if (ImGui::BeginCombo(id ? id : "##combo", preview))
+    {
+        for (int i = 0; i < count; i++)
+        {
+            bool sel = (i == *index);
+            if (ImGui::Selectable(items[i] ? items[i] : "", sel))
+                *index = i;
+            if (sel)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    return *index != prev ? 1 : 0;
+}
+
+static int UiSelectable(void*, const char* id, const char* label, int selected)
+{
+    ImGui::PushID(id ? id : "sel");
+    int hit = ImGui::Selectable(label ? label : "", selected != 0) ? 1 : 0;
+    ImGui::PopID();
+    return hit;
+}
+
+static int UiInputInt(void*, const char* id, int* value)
+{
+    if (!value)
+        return 0;
+    ImGui::SetNextItemWidth(-1.f);
+    return ImGui::InputInt(id ? id : "##i", value) ? 1 : 0;
+}
+
+static void UiDummy(void*, float w, float h)
+{
+    ImGui::Dummy(ImVec2(w, h));
+}
+
+static void UiProgress(void*, float frac)
+{
+    ImGui::ProgressBar(frac, ImVec2(-1.f, 0.f));
+}
+
+static void UiBeginDisabled(void*, int disabled)
+{
+    ImGui::BeginDisabled(disabled != 0);
+}
+
+static void UiEndDisabled(void*)
+{
+    ImGui::EndDisabled();
+}
+
+static void UiTip(void*, const char* text)
+{
+    if (text && text[0])
+        UiTooltip(text);
+}
+
+static void FillUi(BsiUi* ui)
+{
+    memset(ui, 0, sizeof(*ui));
+    ui->size = (uint32_t)sizeof(BsiUi);
+    ui->label = UiLabel;
+    ui->hint = UiHint;
+    ui->button = UiBtn;
+    ui->checkbox = UiCheck;
+    ui->input_text = UiInput;
+    ui->spacing = UiSpc;
+    ui->section = UiSec;
+    ui->same_line = UiSameLine;
+    ui->separator = UiSep;
+    ui->begin_child = UiBeginChild;
+    ui->end_child = UiEndChild;
+    ui->combo = UiCombo;
+    ui->selectable = UiSelectable;
+    ui->input_int = UiInputInt;
+    ui->dummy = UiDummy;
+    ui->progress = UiProgress;
+    ui->begin_disabled = UiBeginDisabled;
+    ui->end_disabled = UiEndDisabled;
+    ui->tooltip = UiTip;
+}
+
 static void FillHost(PluginRec* p)
 {
     memset(&p->host, 0, sizeof(p->host));
@@ -232,7 +999,7 @@ static void FillHost(PluginRec* p)
     p->host.ctx = p;
     p->host.log = RecLog;
     p->host.job_ready = RecReady;
-    p->host.job_path = RecPath;
+    p->host.job_path = RecJobPath;
     p->host.image = RecImage;
     p->host.has_product = RecHasProduct;
     p->host.has_media = RecHasMedia;
@@ -241,6 +1008,45 @@ static void FillHost(PluginRec* p)
     p->host.artifact_at = RecArtAt;
     p->host.save_dialog = RecSaveDialog;
     p->host.write_file = RecWriteFile;
+    p->host.path = RecHostPath;
+    p->host.setting_get = RecSettingGet;
+    p->host.setting_set = RecSettingSet;
+    p->host.setting_get_int = RecSettingGetInt;
+    p->host.setting_set_int = RecSettingSetInt;
+    p->host.setting_get_bool = RecSettingGetBool;
+    p->host.setting_set_bool = RecSettingSetBool;
+    p->host.json_parse = RecJsonParse;
+    p->host.json_new = RecJsonNew;
+    p->host.json_load_file = RecJsonLoadFile;
+    p->host.json_save_file = RecJsonSaveFile;
+    p->host.json_free = RecJsonFree;
+    p->host.json_has = RecJsonHas;
+    p->host.json_size = RecJsonSize;
+    p->host.json_get_string = RecJsonGetString;
+    p->host.json_get_int = RecJsonGetInt;
+    p->host.json_get_bool = RecJsonGetBool;
+    p->host.json_set_string = RecJsonSetString;
+    p->host.json_set_int = RecJsonSetInt;
+    p->host.json_set_bool = RecJsonSetBool;
+    p->host.json_dump = RecJsonDump;
+    p->host.host_name = RecHostName;
+    p->host.host_version = RecHostVersion;
+    p->host.read_file = RecReadFile;
+    p->host.open_dialog = RecOpenDialog;
+    p->host.mem_alloc = RecMemAlloc;
+    p->host.mem_free = RecMemFree;
+    p->host.i18n_get = RecI18nGet;
+    p->host.hex_goto = RecHexGoto;
+    p->host.hex_select = RecHexSelect;
+    p->host.clipboard_set = RecClipboardSet;
+    p->host.tick_ms = RecTickMs;
+    p->host.open_job = RecOpenJob;
+    p->host.detection_count = RecDetectCount;
+    p->host.detection_at = RecDetectAt;
+    p->host.rsrc_count = RecRsrcCount;
+    p->host.rsrc_at = RecRsrcAt;
+    p->host.section_count = RecSectionCount;
+    p->host.section_at = RecSectionAt;
 }
 
 static void UnloadOne(PluginRec& p)
@@ -272,11 +1078,13 @@ static bool LoadDll(const char* path)
         return false;
     }
     const BsiPluginInfo* info = get_info();
-    if (!info || !info->id || !info->id[0] || info->abi_version != BSI_PLUGIN_ABI_VERSION)
+    if (!info || !info->id || !info->id[0] ||
+        info->abi_version < BSI_PLUGIN_ABI_MIN ||
+        info->abi_version > BSI_PLUGIN_ABI_VERSION)
     {
         auto log = LogFor(LogBuiltinCore).Module("Plugin");
-        log.Warning("Skipped %s (missing info or ABI %u != %u)",
-            path, info ? info->abi_version : 0, BSI_PLUGIN_ABI_VERSION);
+        log.Warning("Skipped %s (missing info or ABI %u not in %u..%u)",
+            path, info ? info->abi_version : 0, BSI_PLUGIN_ABI_MIN, BSI_PLUGIN_ABI_VERSION);
         FreeLibrary(h);
         return false;
     }
@@ -298,6 +1106,9 @@ static bool LoadDll(const char* path)
     p.view_count = (FnViewCount)GetProcAddress(h, "BsiPluginViewCount");
     p.view_info = (FnViewInfo)GetProcAddress(h, "BsiPluginViewInfo");
     p.view_draw = (FnViewDraw)GetProcAddress(h, "BsiPluginViewDraw");
+    p.has_settings = (FnHasSettings)GetProcAddress(h, "BsiPluginHasSettings");
+    p.draw_settings = (FnDrawSettings)GetProcAddress(h, "BsiPluginDrawSettings");
+    p.on_job = (FnOnJob)GetProcAddress(h, "BsiPluginOnJob");
     char key[160];
     EnableKey(p.id, key, (int)sizeof(key));
     p.enabled = SettingsGetBool(key, true);
@@ -380,6 +1191,15 @@ void PluginInit()
     PluginRescan();
 }
 
+void PluginNotifyJob(int ready)
+{
+    for (PluginRec& p : g_plugins)
+    {
+        if (p.enabled && p.inited && p.on_job)
+            p.on_job(ready);
+    }
+}
+
 int PluginCount() { return (int)g_plugins.size(); }
 
 static PluginRec* At(int i)
@@ -436,6 +1256,24 @@ void PluginSetEnabled(int i, bool on)
         p->enabled = false;
         log.Info("Disabled %s", p->name);
     }
+}
+
+bool PluginHasSettings(int i)
+{
+    PluginRec* p = At(i);
+    return p && p->enabled && p->inited && p->has_settings && p->has_settings() && p->draw_settings;
+}
+
+void PluginDrawSettings(int i)
+{
+    PluginRec* p = At(i);
+    if (!PluginHasSettings(i) || !p)
+        return;
+    BsiUi ui{};
+    FillUi(&ui);
+    ImGui::PushID(p->id);
+    p->draw_settings(&ui);
+    ImGui::PopID();
 }
 
 void PluginDrawToolsMenu(bool, bool)
@@ -542,7 +1380,12 @@ void PluginDrawView(const char* sel)
         ImGui::TextUnformatted(I18nGet("plugin.view_missing"));
         return;
     }
-    if (p->view_draw && p->view_draw(local))
-        return;
+    if (p->view_draw)
+    {
+        BsiUi ui{};
+        FillUi(&ui);
+        if (p->view_draw(local, &ui))
+            return;
+    }
     ImGui::TextWrapped("%s", I18nGet("plugin.view_stub"));
 }

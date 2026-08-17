@@ -63,7 +63,9 @@ static const int kMaxSeq = 100000;
 
 enum
 {
-    LayoutPy27 = 0,
+    LayoutPy20 = 0,
+    LayoutPy21,
+    LayoutPy27,
     LayoutPy3,
     LayoutPy38,
     LayoutPy311
@@ -225,6 +227,17 @@ static bool MarI32(Mar& m, int32_t* v)
     return true;
 }
 
+static bool MarI16(Mar& m, int32_t* v)
+{
+    if (!MarNeed(m, 2))
+        return false;
+    int16_t s = 0;
+    memcpy(&s, m.b + m.i, 2);
+    m.i += 2;
+    *v = s;
+    return true;
+}
+
 static bool MarU32(Mar& m, uint32_t* v)
 {
     int32_t s = 0;
@@ -278,13 +291,24 @@ static void PushStr(PyCode* code, int kind, const std::string& s)
 }
 
 static bool WalkObj(Mar& m, std::string* got, PyCode* harvest, int harvest_kind);
+static bool ParsePyDllName(const char* s, int* maj, int* min);
 
 static uint32_t PycMagicFor(int maj, int min)
 {
-    if (maj == 2 && min == 7)
-        return 0x0A0DF303u;
-    if (maj == 2 && min == 6)
-        return 0x0A0DF2D1u;
+    if (maj == 2)
+    {
+        switch (min)
+        {
+        case 0:  return 0x0A0DC687u;
+        case 1:  return 0x0A0DEB2Au;
+        case 2:  return 0x0A0DED2Du;
+        case 3:  return 0x0A0DF23Bu;
+        case 4:  return 0x0A0DF26Du;
+        case 5:  return 0x0A0DF2B3u;
+        case 6:  return 0x0A0DF2D1u;
+        default: return 0x0A0DF303u;
+        }
+    }
     if (maj == 3)
     {
         switch (min)
@@ -305,6 +329,52 @@ static uint32_t PycMagicFor(int maj, int min)
     return 0;
 }
 
+static int ProbeCodeHeaderWidth(const uint8_t* p, uint32_t n)
+{
+    size_t i = 0;
+    if (!p || n < 10)
+        return 32;
+    if (p[0] == TypeList || p[0] == TypeTuple)
+    {
+        if (n < 6)
+            return 32;
+        i = 5;
+    }
+    else if (p[0] == TypeSmallTuple)
+        i = 2;
+    if (i >= n || (p[i] & 0x7F) != TypeCode)
+        return 32;
+    if (i + 17 < n)
+    {
+        uint8_t t = p[i + 17] & 0x7F;
+        if (t == TypeString || t == TypeInterned)
+            return 32;
+    }
+    if (i + 9 < n)
+    {
+        uint8_t t = p[i + 9] & 0x7F;
+        if (t == TypeString || t == TypeInterned)
+            return 16;
+    }
+    return 32;
+}
+
+static void InferVerFromCodes(PyBundle* py)
+{
+    if (!py)
+        return;
+    for (const PyCode& c : py->codes)
+    {
+        int maj = 0, min = 0;
+        if (ParsePyDllName(c.filename, &maj, &min))
+        {
+            py->py_major = maj;
+            py->py_minor = min;
+            return;
+        }
+    }
+}
+
 static bool ReadCode(Mar& m)
 {
     PyCode code{};
@@ -314,7 +384,15 @@ static bool ReadCode(Mar& m)
     int nlong = 4;
     int skip_after_names = 3;
     bool py311 = false;
-    if (m.layout == LayoutPy3)
+    bool use_short = false;
+    if (m.layout == LayoutPy20)
+    {
+        skip_after_names = 1;
+        use_short = true;
+    }
+    else if (m.layout == LayoutPy21)
+        use_short = true;
+    else if (m.layout == LayoutPy3)
         nlong = 5;
     else if (m.layout == LayoutPy38)
         nlong = 6;
@@ -328,7 +406,12 @@ static bool ReadCode(Mar& m)
     for (int i = 0; i < nlong; i++)
     {
         int32_t dummy = 0;
-        if (!MarI32(m, &dummy))
+        if (use_short)
+        {
+            if (!MarI16(m, &dummy))
+                return false;
+        }
+        else if (!MarI32(m, &dummy))
             return false;
     }
 
@@ -370,7 +453,12 @@ static bool ReadCode(Mar& m)
     }
 
     int32_t lineno = 0;
-    if (!MarI32(m, &lineno))
+    if (use_short)
+    {
+        if (!MarI16(m, &lineno))
+            return false;
+    }
+    else if (!MarI32(m, &lineno))
         return false;
     code.firstlineno = lineno;
 
@@ -860,6 +948,21 @@ static void PublishBundle(PeFile* pe, const PyBundle& py)
     listing.kind = AnalysisExportProvider;
     root.exports.push_back(listing);
 
+    if (py.marshal_size)
+    {
+        AnalysisArtifact dump{};
+        snprintf(dump.id, sizeof(dump.id), "marshal");
+        dump.kind = AnalysisKindPayload;
+        snprintf(dump.label, sizeof(dump.label), "<marshal>");
+        AnalyzeStamp(&dump, kAnalyzerId, "py2exe");
+        dump.file_off = py.marshal_off;
+        dump.size = py.marshal_size;
+        dump.extra = py.pyc_magic;
+        dump.extra2 = ((uint32_t)py.py_major << 8) | (uint32_t)(py.py_minor & 0xff);
+        AnalyzeSetMedia(&dump, "python.bytecode");
+        root.children.push_back(std::move(dump));
+    }
+
     for (int i = 0; i < (int)py.codes.size(); i++)
     {
         const PyCode& c = py.codes[i];
@@ -1008,7 +1111,7 @@ static bool AnalyzePy2Exe(PeFile* pe, const uint8_t* data, size_t n)
     if (!py.py_major)
         py.py_major = py3 ? 3 : 2;
 
-    int layouts[4];
+    int layouts[8];
     int nlay = 0;
     auto add_layout = [&](int L)
     {
@@ -1017,11 +1120,25 @@ static bool AnalyzePy2Exe(PeFile* pe, const uint8_t* data, size_t n)
             if (layouts[i] == L)
                 return;
         }
-        if (nlay < 4)
+        if (nlay < 8)
             layouts[nlay++] = L;
     };
+    int width = ProbeCodeHeaderWidth(mp, msize);
     if (py.py_major == 2)
-        add_layout(LayoutPy27);
+    {
+        if (width == 16)
+        {
+            add_layout(LayoutPy20);
+            add_layout(LayoutPy21);
+            add_layout(LayoutPy27);
+        }
+        else
+        {
+            add_layout(LayoutPy27);
+            add_layout(LayoutPy21);
+            add_layout(LayoutPy20);
+        }
+    }
     else if (py.py_minor >= 11)
         add_layout(LayoutPy311);
     else if (py.py_minor >= 8)
@@ -1056,6 +1173,9 @@ static bool AnalyzePy2Exe(PeFile* pe, const uint8_t* data, size_t n)
         LooseHarvest(mp, msize, py.marshal_off, &py);
 
     MarkMain(&py);
+    InferVerFromCodes(&py);
+    if (py.py_major == 2 && py.py_minor == 0 && width == 32)
+        py.py_minor = 7;
     py.marshal_ok = !py.codes.empty();
     py.pyc_magic = PycMagicFor(py.py_major, py.py_minor);
 

@@ -12,10 +12,12 @@
 #include "log/log.h"
 #include "detect/detect.h"
 #include "plugin/plugin.h"
+#include "runtime/scripting.h"
 #include "pe/pe.h"
 
 #include "imgui.h"
 
+#include <windows.h>
 #include <d3d11.h>
 #include <stdio.h>
 #include <string.h>
@@ -29,6 +31,7 @@ enum
     SettingsTabPerformance,
     SettingsTabThemes,
     SettingsTabPlugins,
+    SettingsTabScripting,
 };
 
 static void DetectReapplyOpenFile()
@@ -500,10 +503,168 @@ static void DrawPlugins()
         if (PluginError(i)[0])
             ImGui::TextUnformatted(PluginError(i));
         ImGui::PopStyleColor();
+        if (PluginHasSettings(i))
+        {
+            ImGui::Spacing();
+            if (ImGui::CollapsingHeader(I18nGet("settings.plugins.settings")))
+                PluginDrawSettings(i);
+        }
+        else if (PluginEnabled(i) && !PluginInited(i))
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+            ImGui::TextWrapped("%s", I18nGet("settings.plugins.settings_off"));
+            ImGui::PopStyleColor();
+        }
         ImGui::Unindent();
         ImGui::Spacing();
         ImGui::PopID();
     }
+}
+
+static char g_py2_path[MAX_PATH];
+static char g_py3_path[MAX_PATH];
+static char g_lua_path[MAX_PATH];
+static bool g_script_buf;
+
+static void LoadScriptBufs()
+{
+    ScriptingPyGet(2, g_py2_path, MAX_PATH);
+    ScriptingPyGet(3, g_py3_path, MAX_PATH);
+    ScriptingLuaGet(g_lua_path, MAX_PATH);
+    g_script_buf = true;
+}
+
+static void DrawPySlot(int family)
+{
+    ImGui::PushID(family);
+    char* buf = family == 2 ? g_py2_path : g_py3_path;
+    UiSection(I18nGet(family == 2 ? "settings.scripting.python2" : "settings.scripting.python3"));
+
+    ScriptPyInstall cur{};
+    bool probed = buf[0] && ScriptingPyProbe(buf, &cur);
+    bool family_ok = probed && (cur.major == family || cur.major == 0);
+
+    char preview[192];
+    if (!buf[0])
+        snprintf(preview, sizeof(preview), "%s", I18nGet("settings.scripting.none"));
+    else if (probed)
+        snprintf(preview, sizeof(preview), "%s", cur.label);
+    else
+        snprintf(preview, sizeof(preview), "%s", I18nGet("settings.scripting.custom"));
+
+    char pop[24];
+    snprintf(pop, sizeof(pop), "py%d_combo", family);
+    float browse_w = ThemePx(120.f);
+    float w = ImGui::GetContentRegionAvail().x - browse_w - ThemeSpaceSm();
+    if (w < ThemePx(160.f))
+        w = ThemePx(160.f);
+    if (UiButton(preview, ImVec2(w, 0)))
+        ImGui::OpenPopup(pop, ImGuiPopupFlags_NoReopen);
+    ImGui::SameLine();
+    if (UiButton(I18nGet("settings.scripting.browse"), ImVec2(browse_w, 0)))
+    {
+        char picked[MAX_PATH];
+        if (AppPickOpenFilter(picked, MAX_PATH,
+                L"python.exe\0python.exe\0All\0*.exe\0",
+                family == 2 ? L"Python 2" : L"Python 3"))
+        {
+            snprintf(buf, MAX_PATH, "%s", picked);
+            ScriptingPySet(family, buf);
+        }
+    }
+
+    if (ImGui::BeginPopup(pop))
+    {
+        if (ImGui::MenuItem(I18nGet("settings.scripting.none")))
+        {
+            buf[0] = 0;
+            ScriptingPySet(family, "");
+        }
+        int n = ScriptingPyCount(family);
+        for (int i = 0; i < n; i++)
+        {
+            ScriptPyInstall inst{};
+            if (!ScriptingPyAt(family, i, &inst))
+                continue;
+            char lab[280];
+            snprintf(lab, sizeof(lab), "%s  %s", inst.label, inst.path);
+            bool sel = _stricmp(buf, inst.path) == 0;
+            if (ImGui::MenuItem(lab, nullptr, sel))
+            {
+                snprintf(buf, MAX_PATH, "%s", inst.path);
+                ScriptingPySet(family, buf);
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::SetNextItemWidth(-1.f);
+    ImGui::InputText(family == 2 ? "##py2p" : "##py3p", buf, MAX_PATH);
+    if (ImGui::IsItemDeactivatedAfterEdit())
+        ScriptingPySet(family, buf);
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    if (!buf[0])
+        ImGui::TextUnformatted(I18nGet("settings.scripting.none"));
+    else if (!probed)
+        ImGui::TextUnformatted(I18nGet("settings.scripting.missing"));
+    else if (!family_ok)
+        ImGui::TextUnformatted(I18nGet("settings.scripting.wrong_family"));
+    else
+        ImGui::TextWrapped("%s  %s", cur.label, cur.path);
+    ImGui::PopStyleColor();
+    ImGui::PopID();
+}
+
+static void DrawScripting()
+{
+    if (!g_script_buf)
+        LoadScriptBufs();
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.scripting"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.scripting_hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    char found[160];
+    snprintf(found, sizeof(found), I18nGet("settings.scripting.found"),
+        ScriptingPyCount(2), ScriptingPyCount(3));
+    ImGui::TextUnformatted(found);
+    if (UiButton(I18nGet("settings.scripting.rescan")))
+        ScriptingScan();
+    ImGui::Spacing();
+    DrawPySlot(2);
+    ImGui::Spacing();
+    DrawPySlot(3);
+    ImGui::Spacing();
+    UiSection(I18nGet("settings.scripting.lua"));
+    ImGui::PushID("lua");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.scripting.lua_hint"));
+    ImGui::PopStyleColor();
+    float browse_w = ThemePx(120.f);
+    float w = ImGui::GetContentRegionAvail().x - browse_w - ThemeSpaceSm();
+    if (w < ThemePx(160.f))
+        w = ThemePx(160.f);
+    ImGui::SetNextItemWidth(w);
+    ImGui::InputText("##luap", g_lua_path, MAX_PATH);
+    if (ImGui::IsItemDeactivatedAfterEdit())
+        ScriptingLuaSet(g_lua_path);
+    ImGui::SameLine();
+    if (UiButton(I18nGet("settings.scripting.browse"), ImVec2(browse_w, 0)))
+    {
+        char picked[MAX_PATH];
+        if (AppPickOpenFilter(picked, MAX_PATH, L"lua.exe\0lua.exe\0All\0*.exe\0", L"Lua"))
+        {
+            snprintf(g_lua_path, MAX_PATH, "%s", picked);
+            ScriptingLuaSet(g_lua_path);
+        }
+    }
+    ImGui::PopID();
 }
 
 void SettingsPageDraw()
@@ -535,6 +696,8 @@ void SettingsPageDraw()
         g_tab = SettingsTabThemes;
     if (NavTab("tab_plugins", I18nGet("settings.plugins"), g_tab == SettingsTabPlugins))
         g_tab = SettingsTabPlugins;
+    if (NavTab("tab_script", I18nGet("settings.scripting"), g_tab == SettingsTabScripting))
+        g_tab = SettingsTabScripting;
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
@@ -542,6 +705,8 @@ void SettingsPageDraw()
         DrawThemes();
     else if (g_tab == SettingsTabPlugins)
         DrawPlugins();
+    else if (g_tab == SettingsTabScripting)
+        DrawScripting();
     else if (g_tab == SettingsTabConsole)
         DrawConsole();
     else if (g_tab == SettingsTabDetection)

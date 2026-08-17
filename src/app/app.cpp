@@ -11,6 +11,7 @@
 #include "pe/pe.h"
 #include "detect/detect.h"
 #include "plugin/plugin.h"
+#include "runtime/scripting.h"
 #include "tool/tool.h"
 #include "log/log.h"
 #include "platform/window_process.h"
@@ -41,6 +42,7 @@ void AppInit()
     DetectInit();
     ToolInit();
     PluginInit();
+    ScriptingInit();
 }
 
 void AppShutdown()
@@ -304,6 +306,13 @@ void AppPrepareFrame()
     char dropped[MAX_PATH];
     while (EngineTakeDrop(dropped, MAX_PATH))
         AppOpenPath(dropped);
+    static int g_job_note = -1;
+    int ready = (PeJobResult() && !PeJobBusy()) ? 1 : 0;
+    if (ready != g_job_note)
+    {
+        g_job_note = ready;
+        PluginNotifyJob(ready);
+    }
 }
 
 void AppDraw()

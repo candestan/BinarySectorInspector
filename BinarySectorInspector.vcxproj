@@ -56,7 +56,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
@@ -82,7 +82,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;version.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
@@ -119,6 +119,7 @@
     <ClCompile Include="src\analyze\ahk_analyzer.cpp" />
     <ClCompile Include="src\tool\tool.cpp" />
     <ClCompile Include="src\plugin\plugin.cpp" />
+    <ClCompile Include="src\runtime\scripting.cpp" />
     <ClCompile Include="src\detect\detect.cpp" />
     <ClCompile Include="src\detect\sig_load.cpp" />
     <ClCompile Include="src\detect\sig_match.cpp" />
@@ -135,9 +136,6 @@
   <ItemGroup>
     <ProjectReference Include="third_party\msvc\freetype.vcxproj">
       <Project>{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}</Project>
-    </ProjectReference>
-    <ProjectReference Include="plugins\decompsnake\DecompSnake.vcxproj">
-      <Project>{B1A2C3D4-1111-2222-3333-444455556666}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
@@ -163,6 +161,8 @@
     <ClInclude Include="src\tool\tool.h" />
     <ClInclude Include="src\plugin\plugin.h" />
     <ClInclude Include="src\plugin\bsi_plugin_abi.h" />
+    <ClInclude Include="sdk\plugin\bsi_plugin.h" />
+    <ClInclude Include="src\runtime\scripting.h" />
     <ClInclude Include="src\analyze\analyze.h" />
     <ClInclude Include="src\detect\detect.h" />
     <ClInclude Include="src\detect\detect_p.h" />
@@ -176,6 +176,10 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\app\app.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="sdk\plugin\README.md" />
+    <None Include="sdk\plugin\skeleton.c" />
   </ItemGroup>
   <ItemGroup>
     <LanguageJson Include="languages\*.json" />
@@ -192,6 +196,9 @@
     <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(OutDir)assets" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BuiltinSignatures)" DestinationFiles="@(BuiltinSignatures->'$(OutDir)signatures\builtin\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(SignatureDocs)" DestinationFolder="$(OutDir)signatures" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(ProjectDir)plugins\decompsnake\x64\$(Configuration)\decompsnake.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(ProjectDir)plugins\decompsnake\x64\$(Configuration)\decompsnake.dll')" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <DropInPlugins Include="$(ProjectDir)plugins\*\x64\$(Configuration)\*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DropInPlugins)" DestinationFolder="$(OutDir)plugins" Condition="'@(DropInPlugins)' != ''" SkipUnchangedFiles="true" />
   </Target>
 </Project>

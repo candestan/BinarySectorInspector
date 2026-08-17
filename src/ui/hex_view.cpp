@@ -434,6 +434,15 @@ void HexViewGoto(size_t off)
     g_sel_end = off;
 }
 
+void HexViewSelect(size_t off, size_t n)
+{
+    if (!n)
+        n = 1;
+    g_goto = off;
+    g_anchor = off;
+    g_sel_end = off + n - 1;
+}
+
 void HexViewDraw()
 {
     size_t n = 0;
@@ -459,9 +468,15 @@ void HexViewDraw()
     if (g_goto != (size_t)-1)
     {
         size_t a = g_goto;
-        g_ed.GotoAddrAndHighlight(a, a + 1);
-        g_anchor = a;
-        g_sel_end = a;
+        size_t b = a + 1;
+        if (g_sel_end != (size_t)-1 && g_sel_end >= a)
+            b = g_sel_end + 1;
+        g_ed.GotoAddrAndHighlight(a, b);
+        if (g_anchor == (size_t)-1)
+        {
+            g_anchor = a;
+            g_sel_end = a;
+        }
         g_goto = (size_t)-1;
     }
 
