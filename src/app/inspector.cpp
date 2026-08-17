@@ -11,9 +11,8 @@
 #include "i18n/i18n.h"
 #include "persist/settings.h"
 
+#include "ui/hex_view.h"
 #include "imgui.h"
-// credit: https://github.com/ocornut/imgui_club
-#include "imgui_memory_editor.h"
 
 #include <windows.h>
 #include <d3d11.h>
@@ -33,9 +32,6 @@
 
 static char g_sel[96] = "overview";
 static char g_save_msg[160];
-static MemoryEditor g_hex;
-static bool g_hex_primed;
-static size_t g_hex_goto = (size_t)-1;
 static int g_icon_sel = 0;
 static unsigned g_dirt;
 static int g_rsrc_kind; // 0 all, 1 version, 2 icons, 3 com
@@ -117,6 +113,11 @@ static void MarkDirt(unsigned bit)
 {
     g_dirt |= bit;
     PeJobTouch();
+}
+
+void InspectorNoteHexWrite()
+{
+    MarkDirt(DirtHex);
 }
 
 static void ConClear()
@@ -203,7 +204,7 @@ static void DoSave(bool save_as)
 static void GoHex(uint32_t off)
 {
     InspectorSelect("hex");
-    g_hex_goto = off;
+    HexViewGoto(off);
 }
 
 void InspectorSelect(const char* id)
@@ -1042,12 +1043,6 @@ static void DrawCom(PeFile* pe)
     ImGui::PopStyleColor();
 }
 
-static void HexWrite(ImU8* mem, size_t off, ImU8 d, void*)
-{
-    mem[off] = d;
-    MarkDirt(DirtHex);
-}
-
 static void DrawVersion(PeFile* pe)
 {
     if (pe->versions.empty())
@@ -1191,39 +1186,7 @@ static void DrawIcons(PeFile* pe)
 
 static void DrawHex()
 {
-    size_t n = 0;
-    uint8_t* b = PeJobBytes(&n);
-    if (!b || !n)
-    {
-        EmptyHint();
-        return;
-    }
-
-    if (!g_hex_primed)
-    {
-        g_hex.ReadOnly = false;
-        g_hex.OptShowDataPreview = true;
-        g_hex.WriteFn = HexWrite;
-        g_hex_primed = true;
-    }
-    ImVec4 hl = ImGui::ColorConvertU32ToFloat4(ThemeColAccent());
-    hl.w = 0.35f;
-    g_hex.HighlightColor = ImGui::ColorConvertFloat4ToU32(hl);
-    if (g_hex_goto != (size_t)-1)
-    {
-        g_hex.GotoAddrAndHighlight(g_hex_goto, g_hex_goto + 1);
-        g_hex_goto = (size_t)-1;
-    }
-
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-    ImGui::TextWrapped("%s", I18nGet("pe.hex_hint"));
-    ImGui::PopStyleColor();
-
-    if (ImFont* mono = ThemeFontMono())
-        ImGui::PushFont(mono);
-    g_hex.DrawContents(b, n);
-    if (ThemeFontMono())
-        ImGui::PopFont();
+    HexViewDraw();
 }
 
 static const char* AnalysisKindKey(AnalysisKind k)
@@ -2539,6 +2502,7 @@ static void TickSave()
             {
                 snprintf(sum, sizeof(sum), "%s  %s", I18nGet("save.summary_ok"), FileNameOf(g_save_dst));
                 g_dirt = 0;
+                HexViewOnSaved();
             }
             else
                 snprintf(sum, sizeof(sum), "%s", I18nGet("save.summary_fail"));
@@ -2650,8 +2614,9 @@ static void FillTree()
         g_rsrc_kind = 0;
         g_an_root = 0;
         g_an_child = -1;
-        g_hex_goto = (size_t)-1;
-        g_hex.HighlightMin = g_hex.HighlightMax = (size_t)-1;
+        size_t bn = 0;
+        const uint8_t* bb = PeJobBytes(&bn);
+        HexViewOpen(bb, bn);
         NukeIconTex();
         LogSuccess(LogBuiltinAnalyzer, "Opened %s", FileNameOf(pe->path));
         g_sel_bar_y = -1.f;

@@ -78,6 +78,9 @@
     <ClCompile Include="src\ui\widgets.cpp">
       <Filter>ui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\hex_view.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\i18n\i18n.cpp">
       <Filter>i18n</Filter>
     </ClCompile>
