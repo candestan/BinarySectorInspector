@@ -9,6 +9,7 @@
 #include "engine/engine.h"
 #include "persist/settings.h"
 #include "pe/pe.h"
+#include "log/log.h"
 #include "platform/window_process.h"
 #include "imgui.h"
 
@@ -33,11 +34,13 @@ void AppInit()
 {
     I18nInit();
     ThemePackInit();
+    LogInit();
 }
 
 void AppShutdown()
 {
     PeJobShutdown();
+    LogShutdown();
 }
 
 void AppSetPage(AppPage page)
@@ -79,6 +82,7 @@ void AppOpenPath(const char* path)
         return;
     snprintf(g_open_path, MAX_PATH, "%s", path);
     SettingsRecentsAdd(path);
+    LogInfo(LogBuiltinFile, "Opening %s", path);
     PeJobStart(path);
     AppSetPage(AppPageInspector);
 }
@@ -296,6 +300,9 @@ void AppPrepareFrame()
 
 void AppDraw()
 {
+    if (ThemeConsumeSettingsClick() && g_page != AppPageSettings)
+        AppOpenSettings();
+
     switch (g_page)
     {
     case AppPageSettings:

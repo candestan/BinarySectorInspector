@@ -155,8 +155,9 @@ void WelcomeDraw()
                 continue;
             ImGui::PushID(i);
             ImVec2 row = ImGui::GetCursorScreenPos();
-            IconDraw(IconFile, ImVec2(row.x + 8.f, row.y + row_h * 0.5f), 6.f, ThemeColMuted());
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 18.f);
+            float s = IconSize(IconRoleSm);
+            IconDraw(IconFile, ImVec2(row.x + ThemeSpaceXs() + s, row.y + row_h * 0.5f), s, ThemeColMuted());
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + IconSlotW(IconRoleSm));
             if (ImGui::Selectable(FileNameOf(path)))
                 AppOpenPath(path);
             UiDecorateLastButton();
@@ -196,11 +197,6 @@ void WelcomeDraw()
     ImGui::SameLine();
     if (Link(I18nGet("welcome.author")))
         OpenUrl(kAuthorUrl);
-    ImGui::SameLine();
-    ImGui::Dummy(ImVec2(16.f, 1.f));
-    ImGui::SameLine();
-    if (IconButton("settings", IconGear, I18nGet("welcome.settings")))
-        AppOpenSettings();
 
     if (kWelcomeQuoteCount > 0)
     {

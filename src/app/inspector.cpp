@@ -1,9 +1,11 @@
 #include "app/inspector.h"
 #include "app/app.h"
 #include "pe/pe.h"
+#include "log/log.h"
 #include "ui/theme.h"
 #include "ui/icons.h"
 #include "ui/widgets.h"
+#include "ui/console_view.h"
 #include "ui/tex.h"
 #include "i18n/i18n.h"
 #include "persist/settings.h"
@@ -69,26 +71,10 @@ static int   g_cons_pri = 0;
 
 static const float kSplitListFrac = 0.36f;
 
-static char g_ulog[96][220];
-static int  g_ulog_i;
-static int  g_ulog_n;
 static float g_sel_bar_y = -1.f;
 static float g_sel_bar_h;
 static float g_sel_bar_x0;
 static float g_sel_bar_x1;
-
-static void UiLog(const char* fmt, ...)
-{
-    if (!fmt)
-        return;
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(g_ulog[g_ulog_i], 220, fmt, ap);
-    va_end(ap);
-    g_ulog_i = (g_ulog_i + 1) % 96;
-    if (g_ulog_n < 96)
-        g_ulog_n++;
-}
 
 static void LoadViewLayout()
 {
@@ -140,7 +126,7 @@ static void ConLog(const char* s)
     if (g_con_n >= 14 || !s)
         return;
     snprintf(g_con[g_con_n++], 192, "%s", s);
-    UiLog("%s", s);
+    LogInfo(LogBuiltinFile, "%s", s);
 }
 
 struct IconTex
@@ -220,7 +206,7 @@ void InspectorSelect(const char* id)
     if (!id || !id[0])
         return;
     if (strcmp(g_sel, id) != 0)
-        UiLog("select %s", id);
+        LogDebug(LogBuiltinUI, "Selection: %s", id);
     snprintf(g_sel, sizeof(g_sel), "%s", id);
 }
 
@@ -286,7 +272,9 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
         f |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     if (sel)
         f |= ImGuiTreeNodeFlags_Selected;
-    bool open = ImGui::TreeNodeEx(id, f, "   %s", label);
+    char lab[160];
+    IconPrefixLabel(lab, (int)sizeof(lab), IconRoleSm, label);
+    bool open = ImGui::TreeNodeEx(id, f, "%s", lab);
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         InspectorSelect(id);
     ImVec2 a = ImGui::GetItemRectMin();
@@ -311,7 +299,8 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
             g_sel_bar_h += (h - g_sel_bar_h) * k;
         }
     }
-    IconDraw(icon, ImVec2(a.x + pad + 2.f, a.y + h * 0.5f), 6.f,
+    float s = IconSize(IconRoleSm);
+    IconDraw(icon, ImVec2(a.x + pad + s, a.y + h * 0.5f), s,
         sel ? ThemeColAccent() : UiLerpCol(ThemeColMuted(), ThemeColAccent(), ht));
     if (dirty)
     {
@@ -351,7 +340,7 @@ static bool RsrcBtn(const char* id, const char* label, int kind, bool dirty, flo
         InspectorSelect("rsrc");
         g_rsrc_kind = kind;
         g_rsrc_row = 0;
-        UiLog("resource filter %s", label);
+        LogDebug(LogBuiltinUI, "Resource filter: %s", label);
     }
     return hit;
 }
@@ -393,7 +382,7 @@ static void ViewDockMenu(const char* title, bool* vis, int* dock, int* pri,
     {
         *vis = !*vis;
         SettingsSetBool(kvis, *vis);
-        UiLog("%s %s", title, *vis ? "shown" : "hidden");
+        LogDebug(LogBuiltinUI, "%s %s", title, *vis ? "shown" : "hidden");
     }
     ImGui::Separator();
     if (ImGui::BeginMenu(I18nGet("view.dock")))
@@ -408,7 +397,7 @@ static void ViewDockMenu(const char* title, bool* vis, int* dock, int* pri,
             {
                 *dock = d;
                 SettingsSetInt(kdock, d);
-                UiLog("%s dock %s", title, labs[d]);
+                LogDebug(LogBuiltinUI, "%s dock %s", title, labs[d]);
             }
         }
         ImGui::EndMenu();
@@ -481,7 +470,7 @@ static void DrawMenubar()
         if (ImGui::MenuItem(I18nGet("pe.close"), nullptr, false, (ready || busy) && !locked))
             AppSetPage(AppPageWelcome);
         ImGui::Separator();
-        if (ImGui::MenuItem(I18nGet("welcome.settings"), nullptr, false, !locked))
+        if (ImGui::MenuItem(I18nGet("navigation.settings"), nullptr, false, !locked))
             AppOpenSettings();
         TopMenuEnd();
     }
@@ -518,9 +507,6 @@ static void DrawMenubar()
             "view.tree", "view.tree_dock", "view.tree_pri", "view.tree_w");
         ViewDockMenu(I18nGet("view.console"), &g_cons_on, &g_cons_dock, &g_cons_pri,
             "view.console", "view.console_dock", "view.console_pri", "view.console_h");
-        ImGui::Separator();
-        if (ImGui::MenuItem(I18nGet("welcome.settings"), nullptr, false, !locked))
-            AppOpenSettings();
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -1747,7 +1733,7 @@ static void FillTree()
     {
         if (!logged_busy)
         {
-            UiLog("%s", I18nGet("pe.analyzing"));
+            LogInfo(LogBuiltinAnalyzer, "%s", I18nGet("pe.analyzing"));
             logged_busy = true;
         }
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
@@ -1790,7 +1776,7 @@ static void FillTree()
         g_hex_goto = (size_t)-1;
         g_hex.HighlightMin = g_hex.HighlightMax = (size_t)-1;
         NukeIconTex();
-        UiLog("opened %s", FileNameOf(pe->path));
+        LogSuccess(LogBuiltinAnalyzer, "Opened %s", FileNameOf(pe->path));
         g_sel_bar_y = -1.f;
     }
     DrawTree(pe);
@@ -1851,24 +1837,7 @@ static void FillBody()
 
 static void FillCons()
 {
-    if (ImFont* mono = ThemeFontMono())
-        ImGui::PushFont(mono);
-    if (g_ulog_n == 0)
-    {
-        UiEmpty(I18nGet("view.console_empty"));
-    }
-    else
-    {
-        for (int k = 0; k < g_ulog_n; k++)
-        {
-            int idx = (g_ulog_i - g_ulog_n + k + 96) % 96;
-            ImGui::TextUnformatted(g_ulog[idx]);
-        }
-        if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 8.f)
-            ImGui::SetScrollHereY(1.f);
-    }
-    if (ThemeFontMono())
-        ImGui::PopFont();
+    ConsoleViewDraw();
 }
 
 static void SplitV(const char* id, float* sz, const char* key, float sign)

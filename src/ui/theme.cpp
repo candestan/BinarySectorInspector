@@ -1,8 +1,13 @@
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/icons.h"
+#include "i18n/i18n.h"
 #include "persist/paths.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#ifdef IMGUI_ENABLE_FREETYPE
+#include "imgui_freetype.h"
+#endif
 
 #include <windows.h>
 #include <stdio.h>
@@ -27,6 +32,7 @@ static int kCard    = 0x0F0F0F;
 static float kRound = 0.f;
 static char g_caption[128];
 static float g_dpi = 1.f;
+static bool g_settings_click;
 
 float ThemeDpi()
 {
@@ -46,9 +52,9 @@ float ThemeSpaceXl() { return ThemePx(24.f); }
 float ThemeFontSize() { return ThemePx(16.f); }
 float ThemeTitleBarH() { return ThemePx(32.f); }
 float ThemeChromeBtnW() { return ThemePx(40.f); }
+int ThemeChromeButtonCount() { return 4; } // settings, min, max, close
 float ThemeLabelW() { return ThemePx(200.f); }
 float ThemeTreeMinW() { return ThemePx(168.f); }
-float ThemeIconSm() { return ThemePx(6.f); }
 float ThemeSplitHit() { return ThemePx(5.f); }
 
 static void RefreshDpi()
@@ -168,14 +174,59 @@ void ThemeLoadFonts()
     float title_px = ThemePx(22.f);
     float small_px = ThemePx(13.f);
     float mono_px = ThemePx(13.f);
+
+    auto merge_emoji = [&](float size)
+    {
+#ifdef IMGUI_ENABLE_FREETYPE
+        // Color emoji via FreeType LoadColor + Segoe UI Emoji.
+        // credit: https://github.com/ocornut/imgui/blob/master/docs/FONTS.md#using-colorful-glyphsemojis
+        char emoji[MAX_PATH];
+        if (PathsWindowsFont(emoji, MAX_PATH, "seguiemj.ttf"))
+        {
+            ImFontConfig cfg = fc;
+            cfg.MergeMode = true;
+            cfg.PixelSnapH = true;
+            cfg.GlyphOffset = ImVec2(0.f, ThemePx(1.f));
+            cfg.FontLoaderFlags |= ImGuiFreeTypeLoaderFlags_LoadColor;
+            io.Fonts->AddFontFromFileTTF(emoji, size, &cfg);
+            return;
+        }
+#endif
+        char sym[MAX_PATH];
+        if (PathsWindowsFont(sym, MAX_PATH, "seguisym.ttf"))
+        {
+            static const ImWchar ranges[] = {
+                0x2190, 0x21C4,
+                0x2295, 0x229E,
+                0x2302, 0x2316,
+                0x25A2, 0x25BE,
+                0x2699, 0x2699,
+                0x26E8, 0x26E8,
+                0x270F, 0x2715,
+                0x274F, 0x274F,
+                0x2B06, 0x2B07,
+                0,
+            };
+            ImFontConfig mc = fc;
+            mc.MergeMode = true;
+            mc.PixelSnapH = true;
+            mc.GlyphOffset = ImVec2(0.f, ThemePx(1.f));
+            io.Fonts->AddFontFromFileTTF(sym, size, &mc, ranges);
+        }
+    };
+
     if (have_body)
     {
         if (ImFont* f = io.Fonts->AddFontFromFileTTF(body, body_px, &fc))
             io.FontDefault = f;
+        merge_emoji(body_px);
         g_font_small = io.Fonts->AddFontFromFileTTF(body, small_px, &fc);
     }
     else
+    {
         io.FontDefault = io.Fonts->AddFontDefault();
+        merge_emoji(body_px);
+    }
     if (have_title)
         g_font_title = io.Fonts->AddFontFromFileTTF(title, title_px, &fc);
     else if (have_body)
@@ -299,10 +350,11 @@ int ThemeDecorateWindow(const char* title, bool maximized)
     ImVec2 tp = ImVec2(p.x + ThemeSpaceSm(), p.y + (bar_h - ImGui::GetFontSize()) * 0.5f);
     dl->AddText(tp, ImGui::ColorConvertFloat4ToU32(T(kFg)), title);
 
-    float bx = p.x + s.x - btn_w * 3.f;
-    ImVec2 min_a(bx, p.y);
-    ImVec2 max_a(bx + btn_w, p.y);
-    ImVec2 cls_a(bx + btn_w * 2.f, p.y);
+    float bx = p.x + s.x - btn_w * (float)ThemeChromeButtonCount();
+    ImVec2 set_a(bx, p.y);
+    ImVec2 min_a(bx + btn_w, p.y);
+    ImVec2 max_a(bx + btn_w * 2.f, p.y);
+    ImVec2 cls_a(bx + btn_w * 3.f, p.y);
     ImU32 fg = ImGui::ColorConvertFloat4ToU32(T(kFg));
     int hit = 0;
 
@@ -310,6 +362,12 @@ int ThemeDecorateWindow(const char* title, bool maximized)
     ImVec2 bak_cursor = win->DC.CursorPos;
     ImVec2 bak_max = win->DC.CursorMaxPos; // chrome InvisibleButtons inflate CursorMaxPos; restore or HWND grows.
     ImVec2 bak_ideal = win->DC.IdealMaxPos;
+
+    if (ChromeBtn("settings", set_a, btn_w, bar_h))
+        hit |= ThemeClickSettings;
+    IconDraw(IconGear, ImVec2(set_a.x + btn_w * 0.5f, set_a.y + bar_h * 0.5f), IconSize(IconRoleSm), fg, dl);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        ImGui::SetTooltip("%s", I18nGet("navigation.settings"));
 
     if (ChromeBtn("min", min_a, btn_w, bar_h))
         hit |= ThemeClickMin;
@@ -346,5 +404,14 @@ int ThemeDecorateWindow(const char* title, bool maximized)
     win->DC.IdealMaxPos = bak_ideal;
 
     ImGui::Dummy(ImVec2(1.f, bar_h - ImGui::GetStyle().WindowPadding.y));
+    if (hit & ThemeClickSettings)
+        g_settings_click = true;
     return hit;
+}
+
+bool ThemeConsumeSettingsClick()
+{
+    bool v = g_settings_click;
+    g_settings_click = false;
+    return v;
 }

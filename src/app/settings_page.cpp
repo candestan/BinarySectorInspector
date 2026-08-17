@@ -9,6 +9,7 @@
 
 #include "engine/engine.h"
 #include "persist/settings.h"
+#include "log/log.h"
 
 #include "imgui.h"
 
@@ -20,6 +21,7 @@
 enum
 {
     SettingsTabGeneral = 0,
+    SettingsTabConsole,
     SettingsTabPerformance,
     SettingsTabThemes,
 };
@@ -73,8 +75,9 @@ static void LangCombo()
     snprintf(preview, sizeof(preview), "%s", I18nName());
     if (UiButton(preview, ImVec2(w, 0)))
         ImGui::OpenPopup("lang_combo", ImGuiPopupFlags_NoReopen);
-    ImVec2 chev(btn_p.x + w - 16.f, btn_p.y + ImGui::GetFrameHeight() * 0.5f);
-    IconDraw(IconChevron, chev, 6.f, ThemeColMuted());
+    float cs = IconSize(IconRoleXs);
+    ImVec2 chev(btn_p.x + w - ThemeSpaceMd() - cs, btn_p.y + ImGui::GetFrameHeight() * 0.5f);
+    IconDraw(IconChevron, chev, cs, ThemeColMuted());
 
     static float open_t = 0.f;
     static bool scanned = false;
@@ -133,6 +136,19 @@ static void DrawGeneral()
         ImGui::PopFont();
     ImGui::Spacing();
     LangCombo();
+    ImGui::Spacing();
+    bool use_emojis = SettingsGetBool("ui.use_emojis", false);
+    if (UiCheckbox("use_emojis", I18nGet("settings.general.use_emojis"), &use_emojis))
+        SettingsSetBool("ui.use_emojis", use_emojis);
+    if (ImFont* sm = ThemeFontSmall())
+        ImGui::PushFont(sm);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+    ImGui::TextUnformatted(I18nGet("settings.general.use_emojis_hint"));
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    if (ThemeFontSmall())
+        ImGui::PopFont();
 }
 
 static void DrawPerformance()
@@ -196,6 +212,100 @@ static void DrawPerformance()
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
     ImGui::TextWrapped("%s", I18nGet("settings.renderer.hint"));
     ImGui::PopStyleColor();
+}
+
+static void DrawConsole()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.console"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+
+    UiSection(I18nGet("log.settings.visibility"));
+    const struct { LogSeverity sev; const char* key; } levels[] = {
+        { LogSevTrace, "log.lvl.trace" },
+        { LogSevDebug, "log.lvl.debug" },
+        { LogSevInfo, "log.lvl.info" },
+        { LogSevSuccess, "log.lvl.success" },
+        { LogSevWarning, "log.lvl.warning" },
+        { LogSevError, "log.lvl.error" },
+        { LogSevCritical, "log.lvl.critical" },
+    };
+    for (const auto& lv : levels)
+    {
+        bool on = LogSettingsShowSeverity(lv.sev);
+        if (UiCheckbox(lv.key, I18nGet(lv.key), &on))
+        {
+            LogSettingsSetShowSeverity(lv.sev, on);
+            LogSaveSettings();
+        }
+    }
+
+    ImGui::Spacing();
+    UiSection(I18nGet("log.settings.sources"));
+    const struct { LogBuiltin src; const char* key; } srcs[] = {
+        { LogBuiltinCore, "log.src.core" },
+        { LogBuiltinUI, "log.src.ui" },
+        { LogBuiltinAnalyzer, "log.src.analyzer" },
+        { LogBuiltinPeAnalyzer, "log.src.pe_analyzer" },
+        { LogBuiltinFile, "log.src.file" },
+    };
+    for (const auto& s : srcs)
+    {
+        bool on = LogSettingsShowBuiltin(s.src);
+        if (UiCheckbox(s.key, I18nGet(s.key), &on))
+        {
+            LogSettingsSetShowBuiltin(s.src, on);
+            LogSaveSettings();
+        }
+    }
+    bool plug = LogSettingsShowPlugins();
+    if (UiCheckbox("plug", I18nGet("log.settings.plugins"), &plug))
+    {
+        LogSettingsSetShowPlugins(plug);
+        LogSaveSettings();
+    }
+
+    ImGui::Spacing();
+    UiSection(I18nGet("log.settings.behavior"));
+    bool follow = LogSettingsFollow();
+    if (UiCheckbox("follow", I18nGet("log.settings.follow"), &follow))
+    {
+        LogSettingsSetFollow(follow);
+        LogSaveSettings();
+    }
+    bool st = LogSettingsShowTime();
+    if (UiCheckbox("st", I18nGet("log.settings.show_time"), &st))
+    {
+        LogSettingsSetShowTime(st);
+        LogSaveSettings();
+    }
+    bool sl = LogSettingsShowLevel();
+    if (UiCheckbox("sl", I18nGet("log.settings.show_level"), &sl))
+    {
+        LogSettingsSetShowLevel(sl);
+        LogSaveSettings();
+    }
+    bool ss = LogSettingsShowSource();
+    if (UiCheckbox("ss", I18nGet("log.settings.show_source"), &ss))
+    {
+        LogSettingsSetShowSource(ss);
+        LogSaveSettings();
+    }
+    bool cr = LogSettingsCollapseRepeats();
+    if (UiCheckbox("cr", I18nGet("log.settings.collapse"), &cr))
+    {
+        LogSettingsSetCollapseRepeats(cr);
+        LogSaveSettings();
+    }
+    int max_e = LogSettingsMaxEntries();
+    if (ImGui::InputInt(I18nGet("log.settings.max_entries"), &max_e))
+    {
+        LogSettingsSetMaxEntries(max_e);
+        LogSaveSettings();
+    }
 }
 
 static void DrawThemes()
@@ -292,6 +402,8 @@ void SettingsPageDraw()
     ImGui::BeginChild("settings_nav", ImVec2(nav_w, body_h), ImGuiChildFlags_Borders);
     if (NavTab("tab_general", I18nGet("settings.general"), g_tab == SettingsTabGeneral))
         g_tab = SettingsTabGeneral;
+    if (NavTab("tab_console", I18nGet("settings.console"), g_tab == SettingsTabConsole))
+        g_tab = SettingsTabConsole;
     if (NavTab("tab_perf", I18nGet("settings.performance"), g_tab == SettingsTabPerformance))
         g_tab = SettingsTabPerformance;
     if (NavTab("tab_themes", I18nGet("settings.themes"), g_tab == SettingsTabThemes))
@@ -301,6 +413,8 @@ void SettingsPageDraw()
     ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
     if (g_tab == SettingsTabThemes)
         DrawThemes();
+    else if (g_tab == SettingsTabConsole)
+        DrawConsole();
     else if (g_tab == SettingsTabPerformance)
         DrawPerformance();
     else

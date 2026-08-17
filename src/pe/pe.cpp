@@ -1,4 +1,5 @@
 #include "pe/pe.h"
+#include "log/log.h"
 
 #include <windows.h>
 #include <delayimp.h>
@@ -1476,11 +1477,13 @@ static bool                g_dirty;
 
 static void JobThread(std::string path)
 {
+    LogInfo(LogBuiltinAnalyzer, "Analysis started");
     g_prog.store(0.02f);
     wchar_t wpath[MAX_PATH];
     if (!MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wpath, MAX_PATH))
     {
         snprintf(g_err, sizeof(g_err), "path utf-8 failed");
+        LogError(LogBuiltinPeAnalyzer, "Path UTF-8 conversion failed");
         g_state.store(JobFail);
         return;
     }
@@ -1488,6 +1491,7 @@ static void JobThread(std::string path)
     if (h == INVALID_HANDLE_VALUE)
     {
         snprintf(g_err, sizeof(g_err), "open failed (%lu)", GetLastError());
+        LogError(LogBuiltinPeAnalyzer, "Open failed (%lu)", GetLastError());
         g_state.store(JobFail);
         return;
     }
@@ -1496,6 +1500,7 @@ static void JobThread(std::string path)
     {
         CloseHandle(h);
         snprintf(g_err, sizeof(g_err), "bad size");
+        LogError(LogBuiltinPeAnalyzer, "Invalid file size");
         g_state.store(JobFail);
         return;
     }
@@ -1514,19 +1519,25 @@ static void JobThread(std::string path)
     if (off != buf.size())
     {
         snprintf(g_err, sizeof(g_err), "short read");
+        LogError(LogBuiltinPeAnalyzer, "Short read (%zu / %zu)", off, buf.size());
         g_state.store(JobFail);
         return;
     }
+    LogDebug(LogBuiltinPeAnalyzer, "Read %zu bytes", buf.size());
 
+    LogInfo(LogBuiltinPeAnalyzer, "Parsing PE");
     PeFile local;
     if (!PeParse(buf.data(), buf.size(), &local, &g_prog))
     {
         std::lock_guard<std::mutex> lock(g_mu);
         g_file = local;
         snprintf(g_err, sizeof(g_err), "%s", local.error);
+        LogError(LogBuiltinPeAnalyzer, "Parse failed: %s", local.error[0] ? local.error : "unknown");
         g_state.store(JobFail);
         return;
     }
+    uint32_t sec_n = 0;
+    size_t imp_n = 0;
     {
         std::lock_guard<std::mutex> lock(g_mu);
         g_file = std::move(local);
@@ -1534,7 +1545,10 @@ static void JobThread(std::string path)
         g_bytes = std::move(buf);
         g_dirty = false;
         g_err[0] = 0;
+        sec_n = g_file.section_n;
+        imp_n = g_file.imports.size();
     }
+    LogSuccess(LogBuiltinAnalyzer, "Analysis completed (%u sections, %zu imports)", sec_n, imp_n);
     g_state.store(JobDone);
 }
 

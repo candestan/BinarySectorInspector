@@ -22,6 +22,9 @@
     <Filter Include="third_party">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000005}</UniqueIdentifier>
     </Filter>
+    <Filter Include="log">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000009}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -78,6 +81,12 @@
     <ClCompile Include="src\pe\pe.cpp">
       <Filter>pe</Filter>
     </ClCompile>
+    <ClCompile Include="src\log\log.cpp">
+      <Filter>log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\console_view.cpp">
+      <Filter>ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\platform\window_process.cpp">
       <Filter>platform</Filter>
     </ClCompile>
@@ -97,6 +106,9 @@
       <Filter>third_party</Filter>
     </ClCompile>
     <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>third_party</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\misc\freetype\imgui_freetype.cpp">
       <Filter>third_party</Filter>
     </ClCompile>
   </ItemGroup>
@@ -148,6 +160,12 @@
     </ClInclude>
     <ClInclude Include="src\pe\pe.h">
       <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\log\log.h">
+      <Filter>log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\console_view.h">
+      <Filter>ui</Filter>
     </ClInclude>
     <ClInclude Include="src\platform\window_process.h">
       <Filter>platform</Filter>

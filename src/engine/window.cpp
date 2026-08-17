@@ -112,7 +112,7 @@ LRESULT HitTest(HWND hwnd, Form* f, LPARAM lp)
     const float btn = ThemeChromeBtnW();
     if (c.y >= 0 && c.y < (int)bar && c.x >= 0 && c.x < cr.right)
     {
-        if (c.x >= cr.right - (int)(btn * 3.f))
+        if (c.x >= cr.right - (int)(btn * (float)ThemeChromeButtonCount()))
             return HTCLIENT;
         return HTCAPTION; // Win32 drag/snap. custom mouse-move broke restore-from-max.
     }

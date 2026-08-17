@@ -4,9 +4,10 @@
 
 enum
 {
-    ThemeClickMin   = 1,
-    ThemeClickMax   = 2,
-    ThemeClickClose = 4,
+    ThemeClickMin      = 1,
+    ThemeClickMax      = 2,
+    ThemeClickClose    = 4,
+    ThemeClickSettings = 8,
 };
 
 float  ThemeDpi();
@@ -19,15 +20,16 @@ float  ThemeSpaceXl();
 float  ThemeFontSize();
 float  ThemeTitleBarH();
 float  ThemeChromeBtnW();
+int    ThemeChromeButtonCount();
 float  ThemeLabelW();
 float  ThemeTreeMinW();
-float  ThemeIconSm();
 float  ThemeSplitHit();
 
 void   ThemeLoadFonts();
 void   ThemeApply();
 void   ThemeSetPalette(int bg, int fg, int muted, int muted_fg, int accent, int border, int input, int card, float rounding);
 int    ThemeDecorateWindow(const char* title, bool maximized);
+bool   ThemeConsumeSettingsClick();
 void   ThemeSetCaption(const char* caption);
 const char* ThemeCaptionOr(const char* fallback);
 ImFont* ThemeFontTitle();
