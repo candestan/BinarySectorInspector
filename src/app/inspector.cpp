@@ -67,15 +67,7 @@ static float g_cons_sz = 148.f;
 static int   g_tree_pri = 1;
 static int   g_cons_pri = 0;
 
-static const float kFieldCol = 220.f;
-static const float kFieldValueMin = 80.f;
 static const float kSplitListFrac = 0.36f;
-static const float kSplitListMin = 180.f;
-static const float kSplitPrevMin = 160.f;
-static const float kTreeSzMin = 160.f;
-static const float kConsSzMin = 72.f;
-static const float kSplitHit = 5.f;
-static const float kFilterGap = 6.f;
 
 static char g_ulog[96][220];
 static int  g_ulog_i;
@@ -108,10 +100,12 @@ static void LoadViewLayout()
     g_cons_on = SettingsGetBool("view.console", true);
     g_tree_dock = SettingsGetInt("view.tree_dock", DockLeft);
     g_cons_dock = SettingsGetInt("view.console_dock", DockBottom);
-    int tw = SettingsGetInt("view.tree_w", 248);
-    int ch = SettingsGetInt("view.console_h", 148);
-    g_tree_sz = tw < (int)kTreeSzMin ? kTreeSzMin : (float)tw;
-    g_cons_sz = ch < (int)kConsSzMin ? kConsSzMin : (float)ch;
+    int tw = SettingsGetInt("view.tree_w", (int)ThemePx(248.f));
+    int ch = SettingsGetInt("view.console_h", (int)ThemePx(148.f));
+    float tmin = ThemeTreeMinW();
+    float cmin = ThemePx(72.f);
+    g_tree_sz = tw < (int)tmin ? tmin : (float)tw;
+    g_cons_sz = ch < (int)cmin ? cmin : (float)ch;
     g_tree_pri = SettingsGetInt("view.tree_pri", 1);
     g_cons_pri = SettingsGetInt("view.console_pri", 0);
     if (g_tree_dock < 0 || g_tree_dock > 3)
@@ -241,9 +235,7 @@ static const char* FileNameOf(const char* path)
 
 static void EmptyHint(const char* key = "pe.none")
 {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-    ImGui::TextWrapped("%s", I18nGet(key));
-    ImGui::PopStyleColor();
+    UiEmpty(I18nGet(key));
 }
 
 static void Field(const char* k, const char* v, const char* help = nullptr)
@@ -251,20 +243,20 @@ static void Field(const char* k, const char* v, const char* help = nullptr)
     ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(ThemeColMuted()), "%s", k);
     if (help && help[0])
     {
-        ImGui::SameLine(0.f, 6.f);
+        ImGui::SameLine(0.f, ThemeSpaceXs());
         ImGui::PushID(k);
         UiHelpMark(help);
         ImGui::PopID();
     }
     float content_w = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-    float col = kFieldCol;
-    if (col > content_w - kFieldValueMin)
+    float col = ThemeLabelW();
+    if (col > content_w - ThemePx(80.f))
         col = content_w * 0.42f;
-    if (col < 72.f)
-        col = 72.f;
+    if (col < ThemePx(72.f))
+        col = ThemePx(72.f);
     float label_right = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetScrollX();
-    if (label_right + 8.f > col)
-        ImGui::SameLine(0.f, 8.f);
+    if (label_right + ThemeSpaceSm() > col)
+        ImGui::SameLine(0.f, ThemeSpaceSm());
     else
         ImGui::SameLine(col);
     ImGui::PushTextWrapPos(0.f);
@@ -452,7 +444,7 @@ static void DrawMenubar()
     bool ready = PeJobResult() != nullptr && !busy;
     bool locked = g_save_phase != 0;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.f, 4.f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeSpaceSm(), ThemePx(4.f)));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 0.f));
 
     if (TopMenu("file", I18nGet("menu.file")))
@@ -485,7 +477,6 @@ static void DrawMenubar()
             DoSave(false);
         if (ImGui::MenuItem(I18nGet("menu.save_as"), "Ctrl+Shift+S", false, ready && !locked))
             DoSave(true);
-        ImGui::MenuItem(I18nGet("menu.save_all"), nullptr, false, false);
         ImGui::Separator();
         if (ImGui::MenuItem(I18nGet("pe.close"), nullptr, false, (ready || busy) && !locked))
             AppSetPage(AppPageWelcome);
@@ -501,6 +492,7 @@ static void DrawMenubar()
             InspectorSelect("hex");
         ImGui::Separator();
         ImGui::MenuItem(I18nGet("menu.undo"), "Ctrl+Z", false, false);
+        UiTipWhenDisabled(I18nGet("menu.undo_none"));
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -551,6 +543,7 @@ static void DrawMenubar()
     if (TopMenu("run", I18nGet("menu.run")))
     {
         ImGui::MenuItem(I18nGet("menu.run_none"), nullptr, false, false);
+        UiTipWhenDisabled(I18nGet("menu.run_none"));
         TopMenuEnd();
     }
 
@@ -568,7 +561,7 @@ static void DrawMenubar()
         ImVec2 wp = ImGui::GetWindowPos();
         float ww = ImGui::GetWindowSize().x;
         ImGui::GetWindowDrawList()->AddText(
-            ImVec2(wp.x + ww - ts.x - 10.f, wp.y + (h - ts.y) * 0.5f),
+            ImVec2(wp.x + ww - ts.x - ThemeSpaceSm(), wp.y + (h - ts.y) * 0.5f),
             ThemeColMuted(), cap);
     }
     ImGui::EndChild();
@@ -644,15 +637,17 @@ static float SplitListW()
 {
     float avail = ImGui::GetContentRegionAvail().x;
     float w = avail * kSplitListFrac;
-    if (w < kSplitListMin)
-        w = kSplitListMin;
-    if (w + kSplitPrevMin > avail)
-        w = avail - kSplitPrevMin;
+    float list_min = ThemePx(180.f);
+    float prev_min = ThemePx(160.f);
+    if (w < list_min)
+        w = list_min;
+    if (w + prev_min > avail)
+        w = avail - prev_min;
     if (w < avail * 0.35f)
         w = avail * 0.45f;
-    if (w < 80.f)
-        w = 80.f;
-    if (w > avail - 8.f)
+    if (w < ThemePx(80.f))
+        w = ThemePx(80.f);
+    if (w > avail - ThemeSpaceSm())
         w = avail * 0.5f;
     return w;
 }
@@ -669,6 +664,7 @@ static void DrawImportDll(const PeFile* pe, int i)
     ImGui::Spacing();
     if (!ImGui::BeginTable("impfn", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
+    ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Name");
     ImGui::TableSetupColumn("Hint/Ord");
     ImGui::TableHeadersRow();
@@ -703,6 +699,7 @@ static void DrawSections(const PeFile* pe)
     {
         if (g_sec_sel < 0 || g_sec_sel >= pe->section_n)
             g_sec_sel = 0;
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Name");
         ImGui::TableSetupColumn("VA");
         ImGui::TableSetupColumn("VSize");
@@ -861,7 +858,8 @@ static void DrawExports(const PeFile* pe)
     if (!ImGui::BeginTable("expt", 3,
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
-    ImGui::TableSetupColumn("Ordinal", ImGuiTableColumnFlags_WidthFixed, 80.f);
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Ordinal", ImGuiTableColumnFlags_WidthFixed, ThemePx(80.f));
     ImGui::TableSetupColumn("Name");
     ImGui::TableSetupColumn("Address");
     ImGui::TableHeadersRow();
@@ -1196,8 +1194,8 @@ static void DrawRsrcFilters()
             x = 0.f;
         else if (i)
         {
-            ImGui::SameLine(0.f, kFilterGap);
-            x += kFilterGap;
+            ImGui::SameLine(0.f, ThemeSpaceXs());
+            x += ThemeSpaceXs();
         }
         RsrcBtn(fs[i].id, lab, fs[i].kind, dirty, w);
         x += w;
@@ -1291,8 +1289,10 @@ static void DrawRelocs(const PeFile* pe)
     }
     if (g_reloc_sel < 0 || g_reloc_sel >= (int)pe->relocs.size())
         g_reloc_sel = 0;
-    if (ImGui::BeginTable("relb", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(-1.f, 160.f)))
+    if (ImGui::BeginTable("relb", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
+        ImVec2(-1.f, ThemePx(160.f))))
     {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Page RVA");
         ImGui::TableSetupColumn("Size");
         ImGui::TableSetupColumn("Entries");
@@ -1319,8 +1319,9 @@ static void DrawRelocs(const PeFile* pe)
         ImGui::EndTable();
     }
     const PeRelocBlock& b = pe->relocs[g_reloc_sel];
-    if (ImGui::BeginTable("rele", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    if (ImGui::BeginTable("rele", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Type");
         ImGui::TableSetupColumn("Off");
         ImGui::TableSetupColumn("RVA");
@@ -1329,28 +1330,33 @@ static void DrawRelocs(const PeFile* pe)
         int show = (int)b.entries.size();
         if (show > 4096)
             show = 4096;
-        for (int i = 0; i < show; i++)
+        ImGuiListClipper clip;
+        clip.Begin(show);
+        while (clip.Step())
         {
-            const PeRelocEntry& e = b.entries[i];
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(RelocTypeName(e.type));
-            ImGui::TableNextColumn();
-            ImGui::Text("%03X", e.offset);
-            ImGui::TableNextColumn();
-            ImGui::Text("%08X", e.rva);
-            ImGui::TableNextColumn();
-            ImGui::PushID(i);
-            char off[16];
-            snprintf(off, sizeof(off), "%08X", e.file_off);
-            if (e.file_off)
+            for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
             {
-                if (ImGui::Selectable(off, false))
-                    GoHex(e.file_off);
+                const PeRelocEntry& e = b.entries[i];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(RelocTypeName(e.type));
+                ImGui::TableNextColumn();
+                ImGui::Text("%03X", e.offset);
+                ImGui::TableNextColumn();
+                ImGui::Text("%08X", e.rva);
+                ImGui::TableNextColumn();
+                ImGui::PushID(i);
+                char off[16];
+                snprintf(off, sizeof(off), "%08X", e.file_off);
+                if (e.file_off)
+                {
+                    if (ImGui::Selectable(off, false))
+                        GoHex(e.file_off);
+                }
+                else
+                    ImGui::TextUnformatted(off);
+                ImGui::PopID();
             }
-            else
-                ImGui::TextUnformatted(off);
-            ImGui::PopID();
         }
         ImGui::EndTable();
     }
@@ -1389,8 +1395,9 @@ static void DrawDebug(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("dbg", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    if (ImGui::BeginTable("dbg", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Type");
         ImGui::TableSetupColumn("Time");
         ImGui::TableSetupColumn("Size");
@@ -1422,8 +1429,9 @@ static void DrawEntropy(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("ent", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    if (ImGui::BeginTable("ent", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn(I18nGet("pe.range"));
         ImGui::TableSetupColumn("Offset");
         ImGui::TableSetupColumn("Size");
@@ -1453,18 +1461,17 @@ static void DrawStrings(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("str", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    if (ImGui::BeginTable("str", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
-        ImGui::TableSetupColumn("Off");
-        ImGui::TableSetupColumn("Enc");
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Off", ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
+        ImGui::TableSetupColumn("Enc", ImGuiTableColumnFlags_WidthFixed, ThemePx(44.f));
         ImGui::TableSetupColumn("Text");
         ImGui::TableHeadersRow();
         int shown = 0;
-        for (int i = 0; i < (int)pe->strings.size(); i++)
+        auto draw_str_row = [&](int i)
         {
             const PeStringEntry& s = pe->strings[i];
-            if (g_str_filter[0] && !strstr(s.text.c_str(), g_str_filter))
-                continue;
             ImGui::PushID(i);
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -1477,8 +1484,31 @@ static void DrawStrings(const PeFile* pe)
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(s.text.c_str());
             ImGui::PopID();
-            if (++shown >= 4000)
-                break;
+        };
+        if (!g_str_filter[0])
+        {
+            int n = (int)pe->strings.size();
+            if (n > 4000)
+                n = 4000;
+            shown = n;
+            ImGuiListClipper clip;
+            clip.Begin(n);
+            while (clip.Step())
+            {
+                for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
+                    draw_str_row(i);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < (int)pe->strings.size(); i++)
+            {
+                if (!strstr(pe->strings[i].text.c_str(), g_str_filter))
+                    continue;
+                draw_str_row(i);
+                if (++shown >= 4000)
+                    break;
+            }
         }
         ImGui::EndTable();
         if (shown == 0)
@@ -1493,24 +1523,42 @@ static void DrawFindings(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("find", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY))
+    if (ImGui::BeginTable("find", 3,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
     {
-        ImGui::TableSetupColumn(I18nGet("pe.severity"));
-        ImGui::TableSetupColumn(I18nGet("pe.finding"));
-        ImGui::TableSetupColumn(I18nGet("pe.why"));
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn(I18nGet("pe.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
+        ImGui::TableSetupColumn(I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(I18nGet("pe.why"), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
-        for (const PeFinding& f : pe->findings)
+        ImGuiListClipper clip;
+        clip.Begin((int)pe->findings.size());
+        while (clip.Step())
         {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            const char* sev = "info";
-            if (f.sev == PeFindingNotice) sev = "notice";
-            if (f.sev == PeFindingWarn) sev = "warn";
-            ImGui::TextUnformatted(sev);
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(f.title);
-            ImGui::TableNextColumn();
-            ImGui::TextWrapped("%s", f.why);
+            for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
+            {
+                const PeFinding& f = pe->findings[i];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                const char* sev = I18nGet("pe.sev_info");
+                ImU32 col = ThemeColMuted();
+                if (f.sev == PeFindingNotice)
+                {
+                    sev = I18nGet("pe.sev_notice");
+                    col = ThemeColFg();
+                }
+                if (f.sev == PeFindingWarn)
+                {
+                    sev = I18nGet("pe.sev_warn");
+                    col = ThemeColAccent();
+                }
+                ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(col), "%s", sev);
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(f.title);
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", f.why);
+            }
         }
         ImGui::EndTable();
     }
@@ -1780,15 +1828,15 @@ static void FillBody()
         ImVec2 avail = ImGui::GetContentRegionAvail();
         ImVec2 c(ImGui::GetCursorScreenPos().x + avail.x * 0.5f, ImGui::GetCursorScreenPos().y + avail.y * 0.42f);
         float p = PeJobProgress();
-        UiSpinner(c, 28.f, p);
+        UiSpinner(c, ThemePx(28.f), p);
         const char* msg = I18nGet("pe.analyzing");
         ImVec2 ts = ImGui::CalcTextSize(msg);
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y + 40.f), ThemeColMuted(), msg);
+        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y + ThemePx(40.f)), ThemeColMuted(), msg);
         char pct[32];
         snprintf(pct, sizeof(pct), "%d%%", (int)(p * 100.f));
         ImVec2 ps = ImGui::CalcTextSize(pct);
-        dl->AddText(ImVec2(c.x - ps.x * 0.5f, c.y + 62.f), ThemeColFg(), pct);
+        dl->AddText(ImVec2(c.x - ps.x * 0.5f, c.y + ThemePx(62.f)), ThemeColFg(), pct);
     }
     else if (PeJobFailed())
     {
@@ -1807,9 +1855,7 @@ static void FillCons()
         ImGui::PushFont(mono);
     if (g_ulog_n == 0)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-        ImGui::TextUnformatted(I18nGet("view.console_empty"));
-        ImGui::PopStyleColor();
+        UiEmpty(I18nGet("view.console_empty"));
     }
     else
     {
@@ -1828,14 +1874,14 @@ static void FillCons()
 static void SplitV(const char* id, float* sz, const char* key, float sign)
 {
     ImGui::PushID(id);
-    ImGui::InvisibleButton("sp", ImVec2(kSplitHit, ImGui::GetContentRegionAvail().y));
+    ImGui::InvisibleButton("sp", ImVec2(ThemeSplitHit(), ImGui::GetContentRegionAvail().y));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (ImGui::IsItemActive())
     {
         *sz += sign * ImGui::GetIO().MouseDelta.x;
-        if (*sz < kTreeSzMin)
-            *sz = kTreeSzMin;
+        if (*sz < ThemeTreeMinW())
+            *sz = ThemeTreeMinW();
     }
     if (ImGui::IsItemDeactivated())
         SettingsSetInt(key, (int)*sz);
@@ -1845,14 +1891,14 @@ static void SplitV(const char* id, float* sz, const char* key, float sign)
 static void SplitH(const char* id, float* sz, const char* key, float sign)
 {
     ImGui::PushID(id);
-    ImGui::InvisibleButton("sp", ImVec2(ImGui::GetContentRegionAvail().x, kSplitHit));
+    ImGui::InvisibleButton("sp", ImVec2(ImGui::GetContentRegionAvail().x, ThemeSplitHit()));
     if (ImGui::IsItemHovered() || ImGui::IsItemActive())
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
     if (ImGui::IsItemActive())
     {
         *sz += sign * ImGui::GetIO().MouseDelta.y;
-        if (*sz < kConsSzMin)
-            *sz = kConsSzMin;
+        if (*sz < ThemePx(72.f))
+            *sz = ThemePx(72.f);
     }
     if (ImGui::IsItemDeactivated())
         SettingsSetInt(key, (int)*sz);
@@ -1925,6 +1971,64 @@ static void DockStrip(int dock, bool as_row)
     }
 }
 
+static const char* SelCaption()
+{
+    if (strcmp(g_sel, "overview") == 0) return I18nGet("pe.overview");
+    if (strcmp(g_sel, "headers") == 0) return I18nGet("pe.headers");
+    if (strcmp(g_sel, "hex") == 0) return I18nGet("pe.hex");
+    if (strcmp(g_sel, "rsrc") == 0) return I18nGet("pe.resources");
+    if (strcmp(g_sel, "imports") == 0) return I18nGet("pe.imports");
+    if (strcmp(g_sel, "exports") == 0) return I18nGet("pe.exports");
+    if (strcmp(g_sel, "relocs") == 0) return I18nGet("pe.relocs");
+    if (strcmp(g_sel, "tls") == 0) return I18nGet("pe.tls");
+    if (strcmp(g_sel, "debug") == 0) return I18nGet("pe.debug");
+    if (strcmp(g_sel, "entropy") == 0) return I18nGet("pe.entropy");
+    if (strcmp(g_sel, "strings") == 0) return I18nGet("pe.strings");
+    if (strcmp(g_sel, "findings") == 0) return I18nGet("pe.findings");
+    return g_sel;
+}
+
+static void DrawStatusBar()
+{
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    float w = ImGui::GetContentRegionAvail().x;
+    float h = ImGui::GetFrameHeight();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), ThemeColBg());
+    dl->AddLine(p0, ImVec2(p0.x + w, p0.y), ThemeColBorder());
+    ImGui::BeginChild("statusbar", ImVec2(w, h), ImGuiChildFlags_None,
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    if (ImFont* sm = ThemeFontSmall())
+        ImGui::PushFont(sm);
+
+    bool busy = PeJobBusy();
+    const char* path = PeJobPath();
+    if (busy)
+        ImGui::TextUnformatted(I18nGet("status.analyzing"));
+    else if (PeJobFailed())
+        ImGui::TextUnformatted(I18nGet("pe.fail"));
+    else if (path[0])
+    {
+        ImGui::TextUnformatted(FileNameOf(path));
+        ImGui::SameLine(0.f, 0.f);
+        ImGui::TextDisabled("  ·  %s", SelCaption());
+        if (PeJobDirty() || g_dirt)
+        {
+            ImGui::SameLine(0.f, 0.f);
+            ImGui::TextDisabled("  ·  ");
+            ImGui::SameLine(0.f, 0.f);
+            ImGui::TextUnformatted(I18nGet("status.dirty"));
+        }
+    }
+    else
+        ImGui::TextDisabled("%s", I18nGet("status.ready"));
+
+    if (ThemeFontSmall())
+        ImGui::PopFont();
+    ImGui::EndChild();
+}
+
 void InspectorDraw()
 {
     TickSave();
@@ -1946,6 +2050,10 @@ void InspectorDraw()
     DrawMenubar();
 
     ImVec2 av = ImGui::GetContentRegionAvail();
+    float status_h = ImGui::GetFrameHeight();
+    av.y -= status_h;
+    if (av.y < ThemePx(80.f))
+        av.y = ThemePx(80.f);
     if (g_tree_sz > av.x * 0.6f)
         g_tree_sz = av.x * 0.6f;
     if (g_cons_sz > av.y * 0.55f)
@@ -1964,9 +2072,10 @@ void InspectorDraw()
     if (g_cons_on && g_cons_dock == DockBottom)
         bot_h += g_cons_sz;
 
-    float mid_h = av.y - (top ? top_h + kSplitHit : 0.f) - (bot ? bot_h + kSplitHit : 0.f);
-    if (mid_h < 64.f)
-        mid_h = 64.f;
+    float hit = ThemeSplitHit();
+    float mid_h = av.y - (top ? top_h + hit : 0.f) - (bot ? bot_h + hit : 0.f);
+    if (mid_h < ThemePx(64.f))
+        mid_h = ThemePx(64.f);
 
     if (top)
         DockStrip(DockTop, true);
@@ -1992,9 +2101,9 @@ void InspectorDraw()
         if (!right_w || g_cons_sz > right_w)
             right_w = g_cons_sz;
     }
-    float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + kSplitHit : 0.f);
-    if (body_w < 80.f)
-        body_w = 80.f;
+    float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + ThemeSplitHit() : 0.f);
+    if (body_w < ThemePx(80.f))
+        body_w = ThemePx(80.f);
     ImGui::BeginChild("pe_body", ImVec2(body_w, 0.f), ImGuiChildFlags_None);
     FillBody();
     ImGui::EndChild();
@@ -2023,5 +2132,6 @@ void InspectorDraw()
         DockStrip(DockBottom, true);
     }
 
+    DrawStatusBar();
     DrawSaveOverlay();
 }

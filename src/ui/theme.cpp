@@ -26,6 +26,50 @@ static int kInput   = 0x1A1A1A;
 static int kCard    = 0x0F0F0F;
 static float kRound = 0.f;
 static char g_caption[128];
+static float g_dpi = 1.f;
+
+float ThemeDpi()
+{
+    return g_dpi < 1.f ? 1.f : g_dpi;
+}
+
+float ThemePx(float logical)
+{
+    return logical * ThemeDpi();
+}
+
+float ThemeSpaceXs() { return ThemePx(4.f); }
+float ThemeSpaceSm() { return ThemePx(8.f); }
+float ThemeSpaceMd() { return ThemePx(12.f); }
+float ThemeSpaceLg() { return ThemePx(16.f); }
+float ThemeSpaceXl() { return ThemePx(24.f); }
+float ThemeFontSize() { return ThemePx(16.f); }
+float ThemeTitleBarH() { return ThemePx(32.f); }
+float ThemeChromeBtnW() { return ThemePx(40.f); }
+float ThemeLabelW() { return ThemePx(200.f); }
+float ThemeTreeMinW() { return ThemePx(168.f); }
+float ThemeIconSm() { return ThemePx(6.f); }
+float ThemeSplitHit() { return ThemePx(5.f); }
+
+static void RefreshDpi()
+{
+    UINT d = 96;
+    if (ImGui::GetCurrentContext())
+    {
+        ImGuiViewport* vp = ImGui::GetMainViewport();
+        if (vp && vp->PlatformHandleRaw)
+            d = GetDpiForWindow((HWND)vp->PlatformHandleRaw);
+        else
+            d = GetDpiForSystem();
+    }
+    else
+        d = GetDpiForSystem();
+    g_dpi = (float)d / 96.f;
+    if (g_dpi < 1.f)
+        g_dpi = 1.f;
+    if (g_dpi > 3.f)
+        g_dpi = 3.f;
+}
 
 static ImFont* g_font_title;
 static ImFont* g_font_small;
@@ -107,34 +151,39 @@ ImFont* ThemeFontMono() { return g_font_mono; }
 
 void ThemeLoadFonts()
 {
+    RefreshDpi();
     ImGuiIO& io = ImGui::GetIO();
     ImFontConfig fc{};
     fc.OversampleH = 2;
     fc.OversampleV = 1;
     fc.PixelSnapH = false;
-    fc.RasterizerDensity = 1.0f; // 2.0 was crunchy. this is not MSAA.
+    fc.RasterizerDensity = 1.0f;
     char body[MAX_PATH];
     char title[MAX_PATH];
     char mono[MAX_PATH];
     bool have_body = PathsWindowsFont(body, MAX_PATH, "segoeui.ttf");
     bool have_title = PathsWindowsFont(title, MAX_PATH, "seguisb.ttf");
     bool have_mono = PathsWindowsFont(mono, MAX_PATH, "consola.ttf");
+    float body_px = ThemePx(16.f);
+    float title_px = ThemePx(22.f);
+    float small_px = ThemePx(13.f);
+    float mono_px = ThemePx(13.f);
     if (have_body)
     {
-        if (ImFont* f = io.Fonts->AddFontFromFileTTF(body, ThemeFontSize(), &fc))
+        if (ImFont* f = io.Fonts->AddFontFromFileTTF(body, body_px, &fc))
             io.FontDefault = f;
-        g_font_small = io.Fonts->AddFontFromFileTTF(body, 16.0f, &fc);
+        g_font_small = io.Fonts->AddFontFromFileTTF(body, small_px, &fc);
     }
     else
         io.FontDefault = io.Fonts->AddFontDefault();
     if (have_title)
-        g_font_title = io.Fonts->AddFontFromFileTTF(title, 28.0f, &fc);
+        g_font_title = io.Fonts->AddFontFromFileTTF(title, title_px, &fc);
     else if (have_body)
-        g_font_title = io.Fonts->AddFontFromFileTTF(body, 28.0f, &fc);
+        g_font_title = io.Fonts->AddFontFromFileTTF(body, title_px, &fc);
     if (have_mono)
-        g_font_mono = io.Fonts->AddFontFromFileTTF(mono, 16.0f, &fc);
+        g_font_mono = io.Fonts->AddFontFromFileTTF(mono, mono_px, &fc);
     else if (have_body)
-        g_font_mono = io.Fonts->AddFontFromFileTTF(body, 16.0f, &fc);
+        g_font_mono = io.Fonts->AddFontFromFileTTF(body, mono_px, &fc);
 }
 
 void ThemeDrawLogo(ImVec2 c, float s)
@@ -164,13 +213,16 @@ void ThemeApply()
     s.ChildBorderSize = 1.f;
     s.PopupBorderSize = 1.f;
     s.FrameBorderSize = 1.f;
-    s.WindowPadding = ImVec2(14.f, 12.f);
-    s.FramePadding = ImVec2(10.f, 6.f);
-    s.ItemSpacing = ImVec2(10.f, 8.f);
-    s.ItemInnerSpacing = ImVec2(6.f, 4.f);
-    s.IndentSpacing = 14.f;
-    s.ScrollbarSize = 10.f;
-    s.GrabMinSize = 10.f;
+    s.WindowPadding = ImVec2(ThemeSpaceMd(), ThemeSpaceSm());
+    s.FramePadding = ImVec2(ThemeSpaceSm(), ThemePx(5.f));
+    s.ItemSpacing = ImVec2(ThemeSpaceSm(), ThemeSpaceXs() + 2.f);
+    s.ItemInnerSpacing = ImVec2(ThemeSpaceXs() + 2.f, ThemeSpaceXs());
+    s.CellPadding = ImVec2(ThemeSpaceSm(), ThemePx(5.f));
+    s.IndentSpacing = ThemeSpaceMd();
+    s.ScrollbarSize = ThemePx(10.f);
+    s.GrabMinSize = ThemePx(10.f);
+    s.HoverStationaryDelay = 0.35f;
+    s.HoverDelayShort = 0.15f;
     s.AntiAliasedLines = true;
     s.AntiAliasedLinesUseTex = true;
     s.AntiAliasedFill = true;
@@ -244,7 +296,7 @@ int ThemeDecorateWindow(const char* title, bool maximized)
     dl->AddRect(p, ImVec2(p.x + s.x, p.y + s.y), ImGui::ColorConvertFloat4ToU32(T(kBorder)));
     dl->AddRectFilled(p, ImVec2(p.x + s.x, p.y + bar_h), ImGui::ColorConvertFloat4ToU32(T(kBg)));
 
-    ImVec2 tp = ImVec2(p.x + 10.f, p.y + (bar_h - ImGui::GetFontSize()) * 0.5f);
+    ImVec2 tp = ImVec2(p.x + ThemeSpaceSm(), p.y + (bar_h - ImGui::GetFontSize()) * 0.5f);
     dl->AddText(tp, ImGui::ColorConvertFloat4ToU32(T(kFg)), title);
 
     float bx = p.x + s.x - btn_w * 3.f;
@@ -263,18 +315,20 @@ int ThemeDecorateWindow(const char* title, bool maximized)
         hit |= ThemeClickMin;
     {
         float y = (float)(int)(min_a.y + bar_h * 0.5f);
-        dl->AddLine(ImVec2(min_a.x + 12.f, y), ImVec2(min_a.x + btn_w - 12.f, y), fg, 1.f);
+        dl->AddLine(ImVec2(min_a.x + ThemePx(12.f), y), ImVec2(min_a.x + btn_w - ThemePx(12.f), y), fg, 1.f);
     }
 
     if (ChromeBtn("max", max_a, btn_w, bar_h))
         hit |= ThemeClickMax;
     {
-        float x0 = max_a.x + 12.f, y0 = max_a.y + 10.f, x1 = max_a.x + btn_w - 12.f, y1 = max_a.y + bar_h - 10.f;
+        float pad = ThemePx(12.f);
+        float vpad = ThemePx(10.f);
+        float x0 = max_a.x + pad, y0 = max_a.y + vpad, x1 = max_a.x + btn_w - pad, y1 = max_a.y + bar_h - vpad;
         if (maximized)
         {
-            dl->AddRect(ImVec2(x0 + 3.f, y0 - 2.f), ImVec2(x1 + 3.f, y1 - 2.f), fg);
-            dl->AddRectFilled(ImVec2(x0, y0 + 2.f), ImVec2(x1, y1 + 2.f), ImGui::ColorConvertFloat4ToU32(T(kBg)));
-            dl->AddRect(ImVec2(x0, y0 + 2.f), ImVec2(x1, y1 + 2.f), fg);
+            dl->AddRect(ImVec2(x0 + ThemePx(3.f), y0 - ThemePx(2.f)), ImVec2(x1 + ThemePx(3.f), y1 - ThemePx(2.f)), fg);
+            dl->AddRectFilled(ImVec2(x0, y0 + ThemePx(2.f)), ImVec2(x1, y1 + ThemePx(2.f)), ImGui::ColorConvertFloat4ToU32(T(kBg)));
+            dl->AddRect(ImVec2(x0, y0 + ThemePx(2.f)), ImVec2(x1, y1 + ThemePx(2.f)), fg);
         }
         else
             dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), fg);
@@ -282,8 +336,10 @@ int ThemeDecorateWindow(const char* title, bool maximized)
 
     if (ChromeBtn("close", cls_a, btn_w, bar_h))
         hit |= ThemeClickClose;
-    dl->AddLine(ImVec2(cls_a.x + 13.f, cls_a.y + 10.f), ImVec2(cls_a.x + btn_w - 13.f, cls_a.y + bar_h - 10.f), fg, 1.f);
-    dl->AddLine(ImVec2(cls_a.x + btn_w - 13.f, cls_a.y + 10.f), ImVec2(cls_a.x + 13.f, cls_a.y + bar_h - 10.f), fg, 1.f);
+    float cpad = ThemePx(13.f);
+    float cvpad = ThemePx(10.f);
+    dl->AddLine(ImVec2(cls_a.x + cpad, cls_a.y + cvpad), ImVec2(cls_a.x + btn_w - cpad, cls_a.y + bar_h - cvpad), fg, 1.f);
+    dl->AddLine(ImVec2(cls_a.x + btn_w - cpad, cls_a.y + cvpad), ImVec2(cls_a.x + cpad, cls_a.y + bar_h - cvpad), fg, 1.f);
 
     win->DC.CursorPos = bak_cursor;
     win->DC.CursorMaxPos = bak_max;

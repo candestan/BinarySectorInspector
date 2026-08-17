@@ -189,68 +189,89 @@ static void DrawWindowPicker()
 {
     if (!g_win_pick)
         return;
-    ImGui::OpenPopup("##winpick");
+    ImGui::OpenPopup("winpick");
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(640.f, 420.f), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal("##winpick", &g_win_pick, ImGuiWindowFlags_NoTitleBar))
+    ImGui::SetNextWindowSize(ImVec2(ThemePx(720.f), ThemePx(480.f)), ImGuiCond_Appearing);
+    char title[160];
+    snprintf(title, sizeof(title), "%s###winpick", I18nGet("welcome.from_window"));
+    if (!ImGui::BeginPopupModal(title, &g_win_pick, ImGuiWindowFlags_None))
         return;
-    ImGui::TextUnformatted(I18nGet("welcome.from_window"));
-    ImGui::SameLine();
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("welcome.window_hint"));
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2(1.f, ThemeSpaceXs()));
+
     if (UiButton(I18nGet("welcome.refresh_windows")))
         g_win_n = PlatformSnapshotWindows(g_win_rows, kWindowPickCap);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1.f);
     ImGui::InputTextWithHint("##winf", I18nGet("welcome.window_filter"), g_win_filter, (int)sizeof(g_win_filter));
-    int visible = 0;
-    for (int i = 0; i < g_win_n; i++)
+
+    int vis[256];
+    int nv = 0;
+    for (int i = 0; i < g_win_n && nv < 256; i++)
     {
         if (RowMatchesFilter(g_win_rows[i]))
-            visible++;
+            vis[nv++] = i;
     }
-    if (visible == 0)
+    float foot = ImGui::GetFrameHeight() + ThemeSpaceMd();
+    if (nv == 0)
     {
-        ImGui::BeginChild("win_empty", ImVec2(-1.f, -48.f), ImGuiChildFlags_Borders);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-        ImGui::TextUnformatted(I18nGet("pe.none"));
-        ImGui::PopStyleColor();
+        ImGui::BeginChild("win_empty", ImVec2(-1.f, -foot), ImGuiChildFlags_Borders);
+        UiEmpty(I18nGet("pe.none"));
         ImGui::EndChild();
     }
-    else if (ImGui::BeginTable("wins", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
-        ImVec2(-1.f, -48.f)))
+    else if (ImGui::BeginTable("wins", 3,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+        ImGuiTableFlags_SizingStretchProp, ImVec2(-1.f, -foot)))
     {
+        ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn(I18nGet("welcome.window_title"), ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, 72.f);
+        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
         ImGui::TableSetupColumn(I18nGet("welcome.window_image"), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
-        for (int i = 0; i < g_win_n; i++)
+        ImGuiListClipper clip;
+        clip.Begin(nv);
+        while (clip.Step())
         {
-            if (!RowMatchesFilter(g_win_rows[i]))
-                continue;
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::PushID(i);
-            bool sel = (g_win_sel == i);
-            if (ImGui::Selectable(g_win_rows[i].title[0] ? g_win_rows[i].title : "(untitled)", sel,
-                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick))
+            for (int k = clip.DisplayStart; k < clip.DisplayEnd; k++)
             {
-                g_win_sel = i;
-                if (ImGui::IsMouseDoubleClicked(0) && g_win_rows[i].image_path[0])
+                int i = vis[k];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::PushID(i);
+                bool sel = (g_win_sel == i);
+                if (ImGui::Selectable(g_win_rows[i].title[0] ? g_win_rows[i].title : "(untitled)", sel,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick))
                 {
-                    AppOpenPath(g_win_rows[i].image_path);
-                    g_win_pick = false;
-                    ImGui::CloseCurrentPopup();
+                    g_win_sel = i;
+                    if (ImGui::IsMouseDoubleClicked(0) && g_win_rows[i].image_path[0])
+                    {
+                        AppOpenPath(g_win_rows[i].image_path);
+                        g_win_pick = false;
+                        ImGui::CloseCurrentPopup();
+                    }
                 }
+                ImGui::TableNextColumn();
+                ImGui::Text("%lu", (unsigned long)g_win_rows[i].pid);
+                ImGui::TableNextColumn();
+                const char* img = strrchr(g_win_rows[i].image_path, '\\');
+                ImGui::TextUnformatted(img ? img + 1 : (g_win_rows[i].image_path[0] ? g_win_rows[i].image_path : "(access denied)"));
+                ImGui::PopID();
             }
-            ImGui::TableNextColumn();
-            ImGui::Text("%lu", (unsigned long)g_win_rows[i].pid);
-            ImGui::TableNextColumn();
-            const char* img = strrchr(g_win_rows[i].image_path, '\\');
-            ImGui::TextUnformatted(img ? img + 1 : (g_win_rows[i].image_path[0] ? g_win_rows[i].image_path : "(access denied)"));
-            ImGui::PopID();
         }
         ImGui::EndTable();
     }
+
     bool can = g_win_sel >= 0 && g_win_sel < g_win_n && g_win_rows[g_win_sel].image_path[0];
-    if (UiButton(I18nGet("welcome.analyze")) && can)
+    ImGui::BeginDisabled(!can);
+    bool go = UiButton(I18nGet("welcome.analyze"), ImVec2(0.f, 0.f), 1);
+    ImGui::EndDisabled();
+    if (!can)
+        UiTipWhenDisabled(I18nGet("welcome.window_no_image"));
+    if (go && can)
     {
         AppOpenPath(g_win_rows[g_win_sel].image_path);
         g_win_pick = false;

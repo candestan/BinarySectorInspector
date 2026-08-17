@@ -9,9 +9,20 @@ enum
     ThemeClickClose = 4,
 };
 
-inline float ThemeFontSize() { return 20.f; }
-inline float ThemeTitleBarH() { return 34.f; }
-inline float ThemeChromeBtnW() { return 40.f; }
+float  ThemeDpi();
+float  ThemePx(float logical);
+float  ThemeSpaceXs();
+float  ThemeSpaceSm();
+float  ThemeSpaceMd();
+float  ThemeSpaceLg();
+float  ThemeSpaceXl();
+float  ThemeFontSize();
+float  ThemeTitleBarH();
+float  ThemeChromeBtnW();
+float  ThemeLabelW();
+float  ThemeTreeMinW();
+float  ThemeIconSm();
+float  ThemeSplitHit();
 
 void   ThemeLoadFonts();
 void   ThemeApply();

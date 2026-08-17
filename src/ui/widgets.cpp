@@ -165,7 +165,7 @@ void UiDecorateLastButton()
     UiHoverSweep(a, b, t);
 }
 
-bool UiButton(const char* label, ImVec2 size)
+bool UiButton(const char* label, ImVec2 size, int kind)
 {
     ImVec2 ts = ImGui::CalcTextSize(label);
     ImVec2 pad = ImGui::GetStyle().FramePadding;
@@ -178,14 +178,68 @@ bool UiButton(const char* label, ImVec2 size)
     ImVec2 q = ImGui::GetItemRectMax();
     float t = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered());
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(p, q, UiLerpCol(ThemeColCard(), ThemeColHover(), t));
-    dl->AddRect(p, q, UiLerpCol(ThemeColBorder(), ThemeColAccent(), t));
+    ImU32 fill;
+    ImU32 border;
+    ImU32 text;
+    if (kind == 1)
+    {
+        fill = UiLerpCol(ThemeColAccent(), ThemeColFg(), t * 0.12f);
+        border = ThemeColAccent();
+        text = ThemeColBg();
+    }
+    else
+    {
+        fill = UiLerpCol(ThemeColCard(), ThemeColHover(), t);
+        border = UiLerpCol(ThemeColBorder(), ThemeColAccent(), t);
+        text = UiLerpCol(ThemeColFg(), ThemeColAccent(), t * 0.55f);
+    }
+    dl->AddRectFilled(p, q, fill);
+    dl->AddRect(p, q, border);
     UiHandIfHovered();
-    UiHoverSweep(p, q, t);
+    if (kind != 1)
+        UiHoverSweep(p, q, t);
     float lift = UiAnimEnabled() ? t * -1.f : 0.f;
-    dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f + lift),
-        UiLerpCol(ThemeColFg(), ThemeColAccent(), t * 0.55f), label);
+    dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f + lift), text, label);
     return hit;
+}
+
+void UiEmpty(const char* title, const char* detail)
+{
+    ImGui::Dummy(ImVec2(1.f, ThemeSpaceMd()));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    if (title && title[0])
+        ImGui::TextWrapped("%s", title);
+    if (detail && detail[0])
+        ImGui::TextWrapped("%s", detail);
+    ImGui::PopStyleColor();
+}
+
+void UiSection(const char* title)
+{
+    if (!title || !title[0])
+        return;
+    ImGui::Dummy(ImVec2(1.f, ThemeSpaceXs()));
+    ImGui::TextUnformatted(title);
+    ImVec2 a = ImGui::GetItemRectMin();
+    ImVec2 b = ImGui::GetItemRectMax();
+    ImGui::GetWindowDrawList()->AddLine(
+        ImVec2(b.x + ThemeSpaceSm(), (a.y + b.y) * 0.5f),
+        ImVec2(a.x + ImGui::GetContentRegionAvail().x, (a.y + b.y) * 0.5f),
+        ThemeColBorder());
+    ImGui::Dummy(ImVec2(1.f, ThemeSpaceXs()));
+}
+
+void UiTipWhenDisabled(const char* text)
+{
+    if (!text || !text[0])
+        return;
+    if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_DelayShort))
+        return;
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
 }
 
 bool UiCheckbox(const char* id, const char* label, bool* value)
@@ -194,10 +248,10 @@ bool UiCheckbox(const char* id, const char* label, bool* value)
         return false;
     ImGui::PushID(id ? id : "chk");
     float h = ImGui::GetFrameHeight();
-    float box = h - 8.f;
+    float box = h - ThemeSpaceXs() * 2.f;
     ImVec2 ts = ImGui::CalcTextSize(label ? label : "");
     ImVec2 p = ImGui::GetCursorScreenPos();
-    float w = box + 10.f + ts.x + 4.f;
+    float w = box + ThemeSpaceSm() + ts.x + ThemeSpaceXs();
     bool hit = ImGui::InvisibleButton("hit", ImVec2(w, h));
     if (hit)
         *value = !*value;
@@ -219,7 +273,7 @@ bool UiCheckbox(const char* id, const char* label, bool* value)
         dl->AddLine(ImVec2(bx + 3.f, by + box * 0.55f), ImVec2(bx + box * 0.42f, by + box - 3.f), acc, 2.f * m);
         dl->AddLine(ImVec2(bx + box * 0.42f, by + box - 3.f), ImVec2(bx + box - 3.f, by + 3.f), acc, 2.f * m);
     }
-    dl->AddText(ImVec2(bx + box + 8.f, p.y + (h - ts.y) * 0.5f), ThemeColFg(), label ? label : "");
+    dl->AddText(ImVec2(bx + box + ThemeSpaceSm(), p.y + (h - ts.y) * 0.5f), ThemeColFg(), label ? label : "");
     ImGui::PopID();
     return hit;
 }

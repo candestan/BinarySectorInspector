@@ -219,9 +219,9 @@ Form* SpawnForm(const char* name, int w, int h)
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr;
+    ImGui_ImplWin32_Init(hwnd);
     ThemeLoadFonts();
     ThemeApply();
-    ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_device, g_ctx);
 
     f->hwnd = hwnd;

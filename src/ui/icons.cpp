@@ -124,7 +124,9 @@ bool IconButton(const char* id, int icon, const char* label)
 {
     ImVec2 ts = label ? ImGui::CalcTextSize(label) : ImVec2(0, 0);
     float h = ImGui::GetFrameHeight();
-    float w = h + (label ? ts.x + 10.f : 0.f);
+    if (h < ThemePx(28.f))
+        h = ThemePx(28.f);
+    float w = h + (label ? ts.x + ThemeSpaceSm() : 0.f);
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
@@ -146,7 +148,7 @@ bool IconTool(const char* id, int icon, const char* label)
 {
     ImVec2 ts = label ? ImGui::CalcTextSize(label) : ImVec2(0, 0);
     float h = ImGui::GetFrameHeight();
-    float w = h + (label ? ts.x + 8.f : 0.f);
+    float w = h + (label ? ts.x + ThemeSpaceSm() : 0.f);
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
@@ -167,7 +169,7 @@ bool IconMenuItem(int icon, const char* label, const char* shortcut, bool enable
     bool hit = ImGui::MenuItem(buf, shortcut, false, enabled);
     ImVec2 a = ImGui::GetItemRectMin();
     float h = ImGui::GetItemRectSize().y;
-    IconDraw(icon, ImVec2(a.x + 12.f, a.y + h * 0.5f), 5.5f, enabled ? ThemeColFg() : ThemeColMuted());
+    IconDraw(icon, ImVec2(a.x + ThemeSpaceMd(), a.y + h * 0.5f), ThemeIconSm(), enabled ? ThemeColFg() : ThemeColMuted());
     return hit;
 }
 
@@ -179,6 +181,6 @@ bool IconBeginMenu(int icon, const char* label)
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool open = ImGui::BeginMenu(buf);
     float h = ImGui::GetFrameHeight();
-    IconDraw(icon, ImVec2(p.x + 10.f, p.y + h * 0.5f), 5.5f, ThemeColFg(), dl);
+    IconDraw(icon, ImVec2(p.x + ThemeSpaceSm() + ThemePx(2.f), p.y + h * 0.5f), ThemeIconSm(), ThemeColFg(), dl);
     return open;
 }

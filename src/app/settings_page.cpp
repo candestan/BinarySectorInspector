@@ -29,7 +29,9 @@ static int g_tab = SettingsTabGeneral;
 static bool NavTab(const char* id, const char* label, bool selected)
 {
     float w = ImGui::GetContentRegionAvail().x;
-    float h = 38.f;
+    float h = ImGui::GetFrameHeight() + ThemeSpaceXs();
+    if (h < ThemePx(32.f))
+        h = ThemePx(32.f);
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
@@ -41,7 +43,7 @@ static bool NavTab(const char* id, const char* label, bool selected)
     UiHoverSweep(p, q, ht);
     if (selected)
     {
-        static float bar_y = -1.f, bar_h = 38.f;
+        static float bar_y = -1.f, bar_h = 0.f;
         if (bar_y < 0.f || !UiAnimEnabled())
         {
             bar_y = p.y;
@@ -53,10 +55,10 @@ static bool NavTab(const char* id, const char* label, bool selected)
             bar_y += (p.y - bar_y) * k;
             bar_h += (h - bar_h) * k;
         }
-        dl->AddRectFilled(ImVec2(p.x, bar_y), ImVec2(p.x + 3.f, bar_y + bar_h), ThemeColAccent());
+        dl->AddRectFilled(ImVec2(p.x, bar_y), ImVec2(p.x + ThemePx(3.f), bar_y + bar_h), ThemeColAccent());
     }
     ImVec2 ts = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(p.x + 14.f, p.y + (h - ts.y) * 0.5f), selected ? ThemeColFg() : ThemeColMuted(), label);
+    dl->AddText(ImVec2(p.x + ThemeSpaceMd(), p.y + (h - ts.y) * 0.5f), selected ? ThemeColFg() : ThemeColMuted(), label);
     return hit;
 }
 
@@ -168,7 +170,7 @@ static void DrawPerformance()
     ImGui::TextUnformatted(I18nGet("settings.renderer"));
     ImGui::Spacing();
     bool hw = !EngineIsSoftware();
-    if (UiButton(I18nGet("settings.renderer.hardware"), ImVec2(160.f, 0)))
+    if (UiButton(I18nGet("settings.renderer.hardware"), ImVec2(ThemePx(160.f), 0)))
     {
         SettingsSetString("renderer", "hardware");
         EngineRequestRenderer(false);
@@ -180,7 +182,7 @@ static void DrawPerformance()
         ImGui::GetWindowDrawList()->AddRect(a, b, ThemeColAccent(), 0.f, 0, 2.f);
     }
     ImGui::SameLine();
-    if (UiButton(I18nGet("settings.renderer.software"), ImVec2(160.f, 0)))
+    if (UiButton(I18nGet("settings.renderer.software"), ImVec2(ThemePx(160.f), 0)))
     {
         SettingsSetString("renderer", "software");
         EngineRequestRenderer(true);
@@ -286,7 +288,7 @@ void SettingsPageDraw()
 
     ImGui::Spacing();
     float body_h = ImGui::GetContentRegionAvail().y;
-    const float nav_w = 176.f;
+    const float nav_w = ThemePx(176.f);
     ImGui::BeginChild("settings_nav", ImVec2(nav_w, body_h), ImGuiChildFlags_Borders);
     if (NavTab("tab_general", I18nGet("settings.general"), g_tab == SettingsTabGeneral))
         g_tab = SettingsTabGeneral;
