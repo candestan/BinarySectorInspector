@@ -7,3 +7,6 @@
 [submodule "third_party/imgui_club"]
 	path = third_party/imgui_club
 	url = https://github.com/ocornut/imgui_club.git
+[submodule "third_party/freetype"]
+	path = third_party/freetype
+	url = https://github.com/freetype/freetype.git

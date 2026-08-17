@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BinarySectorInspector", "BinarySectorInspector.vcxproj", "{A3C8E1B2-4D7F-4A91-9C2E-7B6F0D1E8A44}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "freetype", "third_party\msvc\freetype.vcxproj", "{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -14,5 +16,9 @@ Global
 		{A3C8E1B2-4D7F-4A91-9C2E-7B6F0D1E8A44}.Debug|x64.Build.0 = Debug|x64
 		{A3C8E1B2-4D7F-4A91-9C2E-7B6F0D1E8A44}.Release|x64.ActiveCfg = Release|x64
 		{A3C8E1B2-4D7F-4A91-9C2E-7B6F0D1E8A44}.Release|x64.Build.0 = Release|x64
+		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Debug|x64.ActiveCfg = Debug|x64
+		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Debug|x64.Build.0 = Debug|x64
+		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Release|x64.ActiveCfg = Release|x64
+		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

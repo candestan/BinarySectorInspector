@@ -1,0 +1,59 @@
+# Third-party dependencies
+
+All external libraries live under `third_party/`. Open-source dependencies are Git submodules pinned to an exact commit. Do not copy upstream files into `src/`. Do not edit submodule contents; first-party build glue stays outside the submodule.
+
+## Setup
+
+```
+git clone --recursive https://github.com/candestan/BinarySectorInspector.git
+```
+
+If the clone is already present:
+
+```
+git submodule update --init --recursive
+```
+
+The default MSBuild does not download dependencies. After submodules are initialized, Debug/Release x64 builds are offline aside from the Windows SDK.
+
+## Policy
+
+1. Official upstream Git submodule, pinned commit or release tag.
+2. Official mirror submodule only when needed.
+3. Vendored source plus original license and provenance, if a submodule is impractical.
+4. Proprietary SDK headers/libs/binaries only when redistribution allows it.
+5. Prebuilt open-source `.lib`/`.dll` only as a documented last resort.
+
+Generated `.lib`/`.obj`/`.dll` belong in `x64/` (gitignored). Runtime DLLs, if any, must be copied by the build. FreeType is linked statically (`/MT`), so no runtime DLL copy is required.
+
+Do not bump submodule commits casually. Upgrades are deliberate.
+
+## Inventory
+
+| Dependency | Pin | Integration | License | Purpose |
+| --- | --- | --- | --- | --- |
+| Dear ImGui | `46d39d56febc2a00bdd2270dc88c8a13f2a0441a` (`v1.92.9b-20-g46d39d56f`) | Git submodule `third_party/imgui`. App compiles selected `.cpp` files; `IMGUI_USE_WCHAR32` and `IMGUI_ENABLE_FREETYPE` are project preprocessor defines, not edits to `imconfig.h`. | MIT (`third_party/imgui/LICENSE.txt`) | UI |
+| imgui_club | `a436e793fe44a2c8e827bfcbf138fcbe11940476` | Git submodule `third_party/imgui_club`. Header-only `imgui_memory_editor`. | MIT (`third_party/imgui_club/LICENSE.txt`) | Hex editor widget |
+| nlohmann/json | `cdf52ae9bef77a0844e02e42df6d2df83a55c4b9` (`v3.11.3-474-gcdf52ae9b`) | Git submodule `third_party/nlohmann_json`. Include `single_include`. | MIT (`third_party/nlohmann_json/LICENSE.MIT`) | settings, i18n, theme JSON |
+| FreeType | `42608f77f20749dd6ddc9e0536788eaad70ea4b5` (tag `VER-2-13-3`) | Git submodule `third_party/freetype` (GitHub mirror of [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype)). Built from source by first-party `third_party/msvc/freetype.vcxproj`. Output `freetype.lib` is generated, not committed. | FTL or GPLv2 (`third_party/freetype/LICENSE.TXT`, `docs/FTL.TXT`, `docs/GPLv2.TXT`) | Color emoji / `imgui_freetype` |
+
+imgui `misc/freetype` is part of the Dear ImGui submodule, not a separate dependency.
+
+## First-party build wrappers
+
+`third_party/msvc/freetype.vcxproj` is application build integration. It compiles a minimal FreeType set (no examples, tests, docs, or tools) with the same `/MT` CRT as the app. It does not patch FreeType sources.
+
+## Platform SDK (not in `third_party/`)
+
+Linked from the Windows SDK: `d3d11`, `dxgi`, `dcomp`, `dwmapi`, plus Win32 (`user32`, `comdlg32`, `shell32`, …). These are OS components, not repository dependencies.
+
+## Binaries
+
+No third-party `.dll`, `.lib`, or `.exe` is committed. `.gitignore` excludes generated binaries and accidental `third_party/*-tmp/` extract folders.
+
+## Local modifications
+
+None inside submodules. App-level options:
+
+- ImGui: `IMGUI_USE_WCHAR32`, `IMGUI_ENABLE_FREETYPE` in `BinarySectorInspector.vcxproj`.
+- FreeType: compile list and `/MT` in `third_party/msvc/freetype.vcxproj`.
