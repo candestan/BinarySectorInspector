@@ -30,4 +30,7 @@ obj/
 settings.json
 PMAP.md
 .cursor
-third_party/*-tmp/
+signatures/user/*
+!signatures/user/.gitkeep
+signatures/packs/*
+!signatures/packs/.gitkeep

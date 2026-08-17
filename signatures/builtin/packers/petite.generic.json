@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "packer.petite.generic",
+  "name": "Petite",
+  "category": "packer",
+  "product_key": "petite",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Section name .petite.",
+  "conditions": {
+    "section_name": ".petite"
+  }
+}

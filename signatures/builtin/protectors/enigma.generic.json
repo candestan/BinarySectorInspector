@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "protector.enigma.generic",
+  "name": "Enigma Protector",
+  "category": "protector",
+  "vendor": "Enigma Protector",
+  "product_key": "enigma",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Enigma section names .enigma1 / .enigma2.",
+  "conditions": {
+    "any": [
+      { "section_name": ".enigma1" },
+      { "section_name": ".enigma2" },
+      { "section_name": ".enigma", "match": "contains" }
+    ]
+  }
+}

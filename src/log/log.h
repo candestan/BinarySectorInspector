@@ -106,6 +106,7 @@ struct LogScope
     LogScope Module(const char* module_name) const;
 };
 
+LogScope LogFor(LogBuiltin src);
 LogScope LogPlugin(const char* id, const char* display_name);
 
 void LogLockEntries();

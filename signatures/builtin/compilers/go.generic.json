@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "compiler.go.generic",
+  "name": "Go",
+  "category": "compiler",
+  "vendor": "Go",
+  "product_key": "go",
+  "confidence": "high",
+  "author": "candestan",
+  "reference": "https://go.dev/src/debug/buildinfo/buildinfo.go",
+  "description": "Go runtime metadata: pclntab section, buildinfo magic, or build ID strings.",
+  "conditions": {
+    "any": [
+      { "section_name": ".gopclntab" },
+      { "section_name": ".go.buildinfo" },
+      { "string_contains": "Go buildinf" },
+      { "string_contains": "Go build ID:" }
+    ]
+  }
+}

@@ -516,7 +516,7 @@ static void RunExport()
 
 static void RowContextMenu(const LogEntry& e)
 {
-    if (!ImGui::BeginPopupContextItem("logctx"))
+    if (!UiBeginPopupContextItem("logctx"))
         return;
     int n = (int)g_sel.size();
     char copy_lab[96];
@@ -565,14 +565,14 @@ static void RowContextMenu(const LogEntry& e)
         g_filter_sev[e.severity] = true;
         RebuildVisible();
     }
-    ImGui::EndPopup();
+    UiEndPopup();
 }
 
 static bool ToolbarBtn(const char* id, int icon, const char* tip, bool active)
 {
     bool hit = IconButton(id, icon, nullptr);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("%s", tip);
+        UiTooltip(tip);
     if (active)
     {
         ImVec2 a = ImGui::GetItemRectMin();

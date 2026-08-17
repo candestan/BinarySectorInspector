@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "packer.upx.generic",
+  "name": "UPX",
+  "category": "packer",
+  "vendor": "UPX",
+  "product_key": "upx",
+  "confidence": "high",
+  "author": "candestan",
+  "reference": "https://github.com/upx/upx",
+  "description": "Known UPX0 + UPX1 section layout.",
+  "conditions": {
+    "all": [
+      {
+        "any": [
+          { "section_name": "UPX0" },
+          { "section_name": ".UPX0" }
+        ]
+      },
+      {
+        "any": [
+          { "section_name": "UPX1" },
+          { "section_name": ".UPX1" }
+        ]
+      }
+    ]
+  }
+}

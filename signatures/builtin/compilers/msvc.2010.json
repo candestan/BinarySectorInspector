@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "compiler.msvc.2010",
+  "name": "MSVC",
+  "category": "compiler",
+  "vendor": "Microsoft",
+  "version": "2010",
+  "product_key": "msvc",
+  "confidence": "medium",
+  "author": "candestan",
+  "description": "msvcr100 import. Runtime family, not an exact compiler build.",
+  "conditions": {
+    "imported_dll": "msvcr100.dll"
+  }
+}

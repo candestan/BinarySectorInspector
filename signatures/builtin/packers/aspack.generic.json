@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "packer.aspack.generic",
+  "name": "ASPack",
+  "category": "packer",
+  "vendor": "ASPack Software",
+  "product_key": "aspack",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Section name .aspack.",
+  "conditions": {
+    "section_name": ".aspack"
+  }
+}

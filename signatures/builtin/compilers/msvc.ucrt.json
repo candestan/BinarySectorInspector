@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "compiler.msvc.ucrt",
+  "name": "MSVC",
+  "category": "compiler",
+  "vendor": "Microsoft",
+  "version": "VS 2015+",
+  "product_key": "msvc",
+  "confidence": "medium",
+  "author": "candestan",
+  "description": "Universal CRT import (vcruntime140 / msvcp140). Identifies the runtime family, not an exact cl.exe version.",
+  "conditions": {
+    "any": [
+      { "imported_dll": "vcruntime140.dll" },
+      { "imported_dll": "vcruntime140_1.dll" },
+      { "imported_dll": "msvcp140.dll" }
+    ]
+  }
+}

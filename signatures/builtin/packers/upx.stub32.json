@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "packer.upx.stub32",
+  "name": "UPX",
+  "category": "packer",
+  "vendor": "UPX",
+  "product_key": "upx",
+  "confidence": "high",
+  "architecture": ["x86"],
+  "author": "candestan",
+  "reference": "https://github.com/upx/upx",
+  "description": "Classic 32-bit UPX unpacking stub at the entry point (PUSHAD / MOV ESI / LEA EDI).",
+  "conditions": {
+    "entry_point_bytes": "60 BE ?? ?? ?? ?? 8D BE ?? ?? ?? ??"
+  }
+}

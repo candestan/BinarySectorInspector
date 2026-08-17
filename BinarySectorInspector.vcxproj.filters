@@ -25,6 +25,15 @@
     <Filter Include="log">
       <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000009}</UniqueIdentifier>
     </Filter>
+    <Filter Include="detect">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pe">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="analyze">
+      <UniqueIdentifier>{a1b2c3d4-0001-4000-8000-00000000000c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -80,6 +89,33 @@
     </ClCompile>
     <ClCompile Include="src\pe\pe.cpp">
       <Filter>pe</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pe\py2exe.cpp">
+      <Filter>pe</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pe\findings.cpp">
+      <Filter>pe</Filter>
+    </ClCompile>
+    <ClCompile Include="src\analyze\analyze.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
+    <ClCompile Include="src\analyze\go_analyzer.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
+    <ClCompile Include="src\analyze\autoit_analyzer.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
+    <ClCompile Include="src\detect\detect.cpp">
+      <Filter>detect</Filter>
+    </ClCompile>
+    <ClCompile Include="src\detect\sig_load.cpp">
+      <Filter>detect</Filter>
+    </ClCompile>
+    <ClCompile Include="src\detect\sig_match.cpp">
+      <Filter>detect</Filter>
+    </ClCompile>
+    <ClCompile Include="src\detect\facts.cpp">
+      <Filter>detect</Filter>
     </ClCompile>
     <ClCompile Include="src\log\log.cpp">
       <Filter>log</Filter>
@@ -160,6 +196,12 @@
     </ClInclude>
     <ClInclude Include="src\pe\pe.h">
       <Filter>pe</Filter>
+    </ClInclude>
+    <ClInclude Include="src\analyze\analyze.h">
+      <Filter>analyze</Filter>
+    </ClInclude>
+    <ClInclude Include="src\detect\detect.h">
+      <Filter>detect</Filter>
     </ClInclude>
     <ClInclude Include="src\log\log.h">
       <Filter>log</Filter>

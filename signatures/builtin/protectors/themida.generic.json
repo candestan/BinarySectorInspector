@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "protector.themida.generic",
+  "name": "Themida",
+  "category": "protector",
+  "vendor": "Oreans",
+  "product_key": "themida",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Oreans Themida / WinLicense section names.",
+  "conditions": {
+    "any": [
+      { "section_name": ".themida", "match": "contains" },
+      { "section_name": ".winlice", "match": "contains" }
+    ]
+  }
+}

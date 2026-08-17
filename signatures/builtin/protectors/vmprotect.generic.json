@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "protector.vmprotect.generic",
+  "name": "VMProtect",
+  "category": "protector",
+  "vendor": "VMProtect Software",
+  "product_key": "vmprotect",
+  "confidence": "high",
+  "author": "candestan",
+  "reference": "https://vmpsoft.com/",
+  "description": "VMProtect section names (.vmp0 / vmp0) or SDK import.",
+  "conditions": {
+    "any": [
+      { "section_name": ".vmp0" },
+      { "section_name": "vmp0", "match": "contains" },
+      { "imported_dll": "vmprotectsdk32.dll" },
+      { "imported_dll": "vmprotectsdk64.dll" }
+    ]
+  }
+}

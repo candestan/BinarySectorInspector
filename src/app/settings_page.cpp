@@ -10,6 +10,8 @@
 #include "engine/engine.h"
 #include "persist/settings.h"
 #include "log/log.h"
+#include "detect/detect.h"
+#include "pe/pe.h"
 
 #include "imgui.h"
 
@@ -21,10 +23,22 @@
 enum
 {
     SettingsTabGeneral = 0,
+    SettingsTabDetection,
     SettingsTabConsole,
     SettingsTabPerformance,
     SettingsTabThemes,
 };
+
+static void DetectReapplyOpenFile()
+{
+    if (PeJobBusy() || !PeJobDone())
+        return;
+    size_t n = 0;
+    uint8_t* b = PeJobBytes(&n);
+    PeFile* pe = PeJobResultMut();
+    if (pe && b)
+        DetectApplyToPe(pe, b, n);
+}
 
 static int g_tab = SettingsTabGeneral;
 
@@ -111,6 +125,7 @@ static void LangCombo()
     ImGui::SetNextWindowPos(ImVec2(btn_p.x, btn_p.y + ImGui::GetFrameHeight() + 4.f), ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(w, 8.f + (full_h - 8.f) * ease));
     ImGui::SetNextWindowBgAlpha(ease);
+    UiPushPopupMetrics();
     if (ImGui::BeginPopup("lang_combo"))
     {
         for (int i = 0; i < I18nCount(); i++)
@@ -118,13 +133,12 @@ static void LangCombo()
             bool sel = strcmp(I18nEntryFile(i), I18nFile()) == 0;
             if (ImGui::Selectable(I18nEntryName(i), sel))
                 I18nLoadFile(I18nEntryFile(i));
-            if (ImGui::IsItemHovered())
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             if (sel)
                 ImGui::SetItemDefaultFocus();
         }
         ImGui::EndPopup();
     }
+    UiPopPopupMetrics();
 }
 
 static void DrawGeneral()
@@ -149,6 +163,67 @@ static void DrawGeneral()
     ImGui::PopStyleColor();
     if (ThemeFontSmall())
         ImGui::PopFont();
+}
+
+static void DrawDetectionSettings()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.detection"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+
+    bool packers = DetectSettingPackers();
+    if (UiCheckbox("det_pack", I18nGet("settings.detection.packers"), &packers))
+    {
+        DetectSetPackers(packers);
+        DetectReapplyOpenFile();
+    }
+    bool compilers = DetectSettingCompilers();
+    if (UiCheckbox("det_comp", I18nGet("settings.detection.compilers"), &compilers))
+    {
+        DetectSetCompilers(compilers);
+        DetectReapplyOpenFile();
+    }
+    bool dotnet = DetectSettingDotNet();
+    if (UiCheckbox("det_net", I18nGet("settings.detection.dotnet"), &dotnet))
+    {
+        DetectSetDotNet(dotnet);
+        DetectReapplyOpenFile();
+    }
+    bool user = DetectSettingUserSigs();
+    if (UiCheckbox("det_user", I18nGet("settings.detection.user"), &user))
+    {
+        DetectSetUserSigs(user);
+        DetectReload();
+        DetectReapplyOpenFile();
+    }
+
+    ImGui::Spacing();
+    UiSection(I18nGet("settings.detection.manager"));
+    DetectLoadStats st = DetectStats();
+    ImGui::Text("%s: %d", I18nGet("settings.detection.total"), st.total);
+    ImGui::Text("%s: %d", I18nGet("settings.detection.builtin"), st.builtin);
+    ImGui::Text("%s: %d", I18nGet("settings.detection.user_n"), st.user);
+    ImGui::Text("%s: %d", I18nGet("settings.detection.pack_n"), st.pack);
+    ImGui::Text("%s: %d", I18nGet("settings.detection.invalid"), st.invalid);
+    ImGui::Text("%s: %d", I18nGet("settings.detection.collisions"), st.collisions);
+    ImGui::Spacing();
+    ImGui::TextWrapped("%s", DetectBuiltinDir());
+    ImGui::TextWrapped("%s", DetectUserDir());
+    ImGui::Spacing();
+    if (UiButton(I18nGet("settings.detection.reload"), ImVec2(ThemePx(200.f), 0)))
+    {
+        DetectReload();
+        DetectReapplyOpenFile();
+    }
+    ImGui::SameLine();
+    if (UiButton(I18nGet("settings.detection.open_user"), ImVec2(ThemePx(220.f), 0)))
+        DetectOpenUserDir();
+    ImGui::SameLine();
+    if (UiButton(I18nGet("settings.detection.validate"), ImVec2(ThemePx(200.f), 0)))
+        DetectReload();
 }
 
 static void DrawPerformance()
@@ -402,6 +477,8 @@ void SettingsPageDraw()
     ImGui::BeginChild("settings_nav", ImVec2(nav_w, body_h), ImGuiChildFlags_Borders);
     if (NavTab("tab_general", I18nGet("settings.general"), g_tab == SettingsTabGeneral))
         g_tab = SettingsTabGeneral;
+    if (NavTab("tab_detect", I18nGet("settings.detection"), g_tab == SettingsTabDetection))
+        g_tab = SettingsTabDetection;
     if (NavTab("tab_console", I18nGet("settings.console"), g_tab == SettingsTabConsole))
         g_tab = SettingsTabConsole;
     if (NavTab("tab_perf", I18nGet("settings.performance"), g_tab == SettingsTabPerformance))
@@ -415,6 +492,8 @@ void SettingsPageDraw()
         DrawThemes();
     else if (g_tab == SettingsTabConsole)
         DrawConsole();
+    else if (g_tab == SettingsTabDetection)
+        DrawDetectionSettings();
     else if (g_tab == SettingsTabPerformance)
         DrawPerformance();
     else

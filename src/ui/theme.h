@@ -24,6 +24,12 @@ int    ThemeChromeButtonCount();
 float  ThemeLabelW();
 float  ThemeTreeMinW();
 float  ThemeSplitHit();
+float  ThemeMenuPadX();
+float  ThemeMenuPadY();
+float  ThemePopupPad();
+float  ThemeHitMin();
+float  ThemeRowH();
+float  ThemeTooltipPad();
 
 void   ThemeLoadFonts();
 void   ThemeApply();

@@ -325,10 +325,20 @@ bool IconButton(const char* id, int icon, const char* label)
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
     ImVec2 q = ImGui::GetItemRectMax();
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    bool focused = ImGui::IsItemFocused();
+    float ht = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        ht = 1.f;
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(p, q, ThemeColCard());
+    ImU32 fill = UiLerpCol(ThemeColCard(), ThemeColHover(), ht);
+    if (active)
+        fill = UiLerpCol(fill, ThemeColAccent(), 0.16f);
+    dl->AddRectFilled(p, q, fill);
+    if (focused)
+        dl->AddRect(p, q, ThemeColAccent());
     UiHandIfHovered();
-    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered());
     UiHoverSweep(p, q, ht);
     ImU32 col = UiLerpCol(ThemeColFg(), ThemeColAccent(), ht);
     if (label && label[0])
@@ -337,8 +347,8 @@ bool IconButton(const char* id, int icon, const char* label)
         IconDraw(icon, ImVec2(p.x + w * 0.5f, p.y + h * 0.5f), s, col, dl);
     if (label && label[0])
         dl->AddText(ImVec2(p.x + pad + slot + gap, p.y + (h - ts.y) * 0.5f), col, label);
-    else if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        ImGui::SetTooltip("%s", id);
+    else if (hovered && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(id);
     return hit;
 }
 

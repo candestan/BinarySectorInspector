@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "toolchain.msvc.linker14",
+  "name": "MSVC linker",
+  "category": "toolchain",
+  "vendor": "Microsoft",
+  "version": "14.x",
+  "product_key": "msvc.linker14",
+  "confidence": "medium",
+  "author": "candestan",
+  "description": "Optional header MajorLinkerVersion 14 (VS 2015+). Linker family, not an exact toolset.",
+  "conditions": {
+    "all": [
+      { "linker_major": 14 },
+      { "has_com": false }
+    ]
+  }
+}

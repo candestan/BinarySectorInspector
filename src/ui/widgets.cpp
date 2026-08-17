@@ -4,6 +4,7 @@
 #include "imgui.h"
 
 #include <math.h>
+#include <float.h>
 
 bool UiAnimEnabled()
 {
@@ -173,32 +174,43 @@ bool UiButton(const char* label, ImVec2 size, int kind)
         size.x = ts.x + pad.x * 2.f;
     if (size.y <= 0.f)
         size.y = ImGui::GetFrameHeight();
+    if (size.y < ThemeHitMin())
+        size.y = ThemeHitMin();
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool hit = ImGui::InvisibleButton(label, size);
     ImVec2 q = ImGui::GetItemRectMax();
-    float t = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered());
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    bool focused = ImGui::IsItemFocused();
+    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        t = 1.f;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImU32 fill;
     ImU32 border;
     ImU32 text;
     if (kind == 1)
     {
-        fill = UiLerpCol(ThemeColAccent(), ThemeColFg(), t * 0.12f);
+        fill = UiLerpCol(ThemeColAccent(), ThemeColFg(), active ? 0.22f : t * 0.12f);
         border = ThemeColAccent();
         text = ThemeColBg();
     }
     else
     {
         fill = UiLerpCol(ThemeColCard(), ThemeColHover(), t);
+        if (active)
+            fill = UiLerpCol(fill, ThemeColAccent(), 0.18f);
         border = UiLerpCol(ThemeColBorder(), ThemeColAccent(), t);
         text = UiLerpCol(ThemeColFg(), ThemeColAccent(), t * 0.55f);
     }
     dl->AddRectFilled(p, q, fill);
-    dl->AddRect(p, q, border);
+    dl->AddRect(p, q, focused ? ThemeColAccent() : border);
     UiHandIfHovered();
     if (kind != 1)
         UiHoverSweep(p, q, t);
-    float lift = UiAnimEnabled() ? t * -1.f : 0.f;
+    float lift = 0.f;
+    if (UiAnimEnabled())
+        lift = active ? 1.f : t * -1.f;
     dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f + lift), text, label);
     return hit;
 }
@@ -229,17 +241,74 @@ void UiSection(const char* title)
     ImGui::Dummy(ImVec2(1.f, ThemeSpaceXs()));
 }
 
+void UiTooltip(const char* text)
+{
+    if (!text || !text[0])
+        return;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeTooltipPad(), ThemeTooltipPad()));
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 36.f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+    ImGui::PopStyleVar();
+}
+
 void UiTipWhenDisabled(const char* text)
 {
     if (!text || !text[0])
         return;
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_DelayShort))
         return;
-    ImGui::BeginTooltip();
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.f);
-    ImGui::TextUnformatted(text);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
+    UiTooltip(text);
+}
+
+void UiPushPopupMetrics()
+{
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemePopupPad(), ThemePopupPad()));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemeMenuPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(8.f), ThemeMenuPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(ThemeMenuPadX(), ThemePx(4.f)));
+}
+
+void UiPopPopupMetrics()
+{
+    ImGui::PopStyleVar(4);
+}
+
+bool UiBeginPopup(const char* str_id)
+{
+    UiPushPopupMetrics();
+    ImGui::SetNextWindowSizeConstraints(ImVec2(ThemePx(196.f), 0.f), ImVec2(FLT_MAX, FLT_MAX));
+    bool open = ImGui::BeginPopup(str_id);
+    if (!open)
+    {
+        UiPopPopupMetrics();
+        return false;
+    }
+    UiPopupFadePush();
+    return true;
+}
+
+bool UiBeginPopupContextItem(const char* str_id)
+{
+    UiPushPopupMetrics();
+    ImGui::SetNextWindowSizeConstraints(ImVec2(ThemePx(196.f), 0.f), ImVec2(FLT_MAX, FLT_MAX));
+    bool open = ImGui::BeginPopupContextItem(str_id);
+    if (!open)
+    {
+        UiPopPopupMetrics();
+        return false;
+    }
+    UiPopupFadePush();
+    return true;
+}
+
+void UiEndPopup()
+{
+    UiPopupFadePop();
+    ImGui::EndPopup();
+    UiPopPopupMetrics();
 }
 
 bool UiCheckbox(const char* id, const char* label, bool* value)
@@ -322,13 +391,7 @@ void UiHelpMark(const char* text)
     ImVec2 ts = ImGui::CalcTextSize(q);
     dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.52f), col, q);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNone))
-    {
-        ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 36.f);
-        ImGui::TextUnformatted(text);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
+        UiTooltip(text);
 }
 
 void UiPopupFadePush()

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "packer.py2exe.generic",
+  "name": "py2exe",
+  "category": "packer",
+  "vendor": "py2exe",
+  "product_key": "py2exe",
+  "confidence": "high",
+  "author": "candestan",
+  "reference": "https://github.com/py2exe/py2exe",
+  "description": "PYTHONSCRIPT resource used by py2exe to store marshalled code objects.",
+  "conditions": {
+    "resource_type": "PYTHONSCRIPT"
+  }
+}

@@ -56,7 +56,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
@@ -82,7 +82,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;dcomp.lib;dwmapi.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>$(ProjectDir)src\app\app.manifest</AdditionalManifestFiles>
@@ -109,6 +109,15 @@
     <ClCompile Include="src\persist\settings.cpp" />
     <ClCompile Include="src\persist\paths.cpp" />
     <ClCompile Include="src\pe\pe.cpp" />
+    <ClCompile Include="src\pe\py2exe.cpp" />
+    <ClCompile Include="src\pe\findings.cpp" />
+    <ClCompile Include="src\analyze\analyze.cpp" />
+    <ClCompile Include="src\analyze\go_analyzer.cpp" />
+    <ClCompile Include="src\analyze\autoit_analyzer.cpp" />
+    <ClCompile Include="src\detect\detect.cpp" />
+    <ClCompile Include="src\detect\sig_load.cpp" />
+    <ClCompile Include="src\detect\sig_match.cpp" />
+    <ClCompile Include="src\detect\facts.cpp" />
     <ClCompile Include="src\platform\window_process.cpp" />
     <ClCompile Include="third_party\imgui\imgui.cpp" />
     <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
@@ -142,6 +151,9 @@
     <ClInclude Include="src\persist\settings.h" />
     <ClInclude Include="src\persist\paths.h" />
     <ClInclude Include="src\pe\pe.h" />
+    <ClInclude Include="src\analyze\analyze.h" />
+    <ClInclude Include="src\detect\detect.h" />
+    <ClInclude Include="src\detect\detect_p.h" />
     <ClInclude Include="src\platform\window_process.h" />
     <ClInclude Include="src\app\resource.h" />
     <ClInclude Include="third_party\imgui\imgui.h" />
@@ -157,12 +169,16 @@
     <LanguageJson Include="languages\*.json" />
     <ThemeJson Include="themes\*.json" />
     <AssetFiles Include="assets\*" />
+    <BuiltinSignatures Include="signatures\builtin\**\*.json" />
+    <SignatureDocs Include="signatures\README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Target Name="CopyLangAndThemes" AfterTargets="Build">
-    <MakeDir Directories="$(OutDir)languages;$(OutDir)themes;$(OutDir)assets" />
+    <MakeDir Directories="$(OutDir)languages;$(OutDir)themes;$(OutDir)assets;$(OutDir)signatures\builtin;$(OutDir)signatures\user;$(OutDir)signatures\packs" />
     <Copy SourceFiles="@(LanguageJson)" DestinationFolder="$(OutDir)languages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ThemeJson)" DestinationFolder="$(OutDir)themes" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(OutDir)assets" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BuiltinSignatures)" DestinationFiles="@(BuiltinSignatures->'$(OutDir)signatures\builtin\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(SignatureDocs)" DestinationFolder="$(OutDir)signatures" SkipUnchangedFiles="true" />
   </Target>
 </Project>

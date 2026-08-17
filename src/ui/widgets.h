@@ -18,6 +18,12 @@ bool  UiButton(const char* label, ImVec2 size = ImVec2(0, 0), int kind = 0); // 
 bool  UiCheckbox(const char* id, const char* label, bool* value);
 void  UiSpinner(ImVec2 center, float radius, float progress); // progress < 0 = indeterminate
 void  UiHelpMark(const char* text);
+void  UiTooltip(const char* text);
+void  UiPushPopupMetrics();
+void  UiPopPopupMetrics();
+bool  UiBeginPopup(const char* str_id);
+bool  UiBeginPopupContextItem(const char* str_id = nullptr);
+void  UiEndPopup();
 void  UiPopupFadePush();
 void  UiPopupFadePop();
 void  UiEmpty(const char* title, const char* detail = nullptr);

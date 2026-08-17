@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "dotnet.smartassembly.generic",
+  "name": "SmartAssembly",
+  "category": "dotnet_obfuscator",
+  "vendor": "Red Gate",
+  "product_key": "smartassembly",
+  "confidence": "high",
+  "requires_clr": true,
+  "author": "candestan",
+  "description": "SmartAssembly type, namespace, or product string.",
+  "conditions": {
+    "any": [
+      { "namespace": "SmartAssembly", "match": "contains" },
+      { "type_name": "SmartAssembly", "match": "contains" },
+      { "string_contains": "SmartAssembly" }
+    ]
+  }
+}

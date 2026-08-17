@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "compiler.autoit.generic",
+  "name": "AutoIt",
+  "category": "compiler",
+  "vendor": "AutoIt",
+  "product_key": "autoit",
+  "confidence": "high",
+  "native_only": true,
+  "author": "candestan",
+  "reference": "https://www.autoitscript.com/",
+  "description": "AutoIt compiled script identity. The stub may still carry a Microsoft Rich header.",
+  "conditions": {
+    "any": [
+      {
+        "resource_name": "SCRIPT",
+        "weight": 55
+      },
+      {
+        "byte_pattern": "41 55 33 21 45 41 30 36",
+        "where": "file",
+        "weight": 70
+      },
+      {
+        "byte_pattern": "41 55 33 21 45 41 30 35",
+        "where": "file",
+        "weight": 70
+      },
+      { "string_contains": ">>>AUTOIT SCRIPT<<<" },
+      { "string_contains": "AU3!EA06" },
+      { "string_contains": "AU3!EA05" },
+      { "string_contains": "AutoIt v3" },
+      { "string_contains": "AUT2EXE" },
+      { "string_contains": "autoitscript.com" },
+      { "string_contains": "/AutoIt3ExecuteLine" },
+      { "string_contains": "/AutoIt3ExecuteScript" },
+      { "string_contains": "This is a compiled AutoIt" },
+      {
+        "version_string": {
+          "key": "ProductName",
+          "contains": "AutoIt"
+        }
+      },
+      {
+        "version_string": {
+          "key": "OriginalFilename",
+          "contains": "Aut2Exe"
+        }
+      }
+    ]
+  }
+}

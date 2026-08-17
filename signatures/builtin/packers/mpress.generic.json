@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "packer.mpress.generic",
+  "name": "MPRESS",
+  "category": "packer",
+  "vendor": "MATCODE",
+  "product_key": "mpress",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Section name contains MPRESS.",
+  "conditions": {
+    "section_name": "MPRESS",
+    "match": "contains"
+  }
+}

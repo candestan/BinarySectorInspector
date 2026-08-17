@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "compiler.borland",
+  "name": "Borland / Embarcadero",
+  "category": "compiler",
+  "vendor": "Embarcadero",
+  "product_key": "borland",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "Borland memory manager or C++ runtime import.",
+  "conditions": {
+    "any": [
+      { "imported_dll": "borlndmm.dll" },
+      { "imported_dll": "cc32240mt.dll" }
+    ]
+  }
+}

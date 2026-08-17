@@ -1,11 +1,14 @@
 #include "pe/pe.h"
 #include "log/log.h"
+#include "detect/detect.h"
+#include "analyze/analyze.h"
 
 #include <windows.h>
 #include <delayimp.h>
 #include <bcrypt.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <thread>
 #include <mutex>
@@ -25,8 +28,6 @@ static const uint32_t kMaxDebugEntries = 256;
 static const uint32_t kMinExtractedStringLength = 4;
 static const uint32_t kMaxExtractedStrings = 20000;
 static const uint32_t kMaxExtractedStringChars = 512;
-static const uint32_t kUnusualDosStubThreshold = 1024;
-static const double kHighEntropyThreshold = 7.0;
 
 #ifndef IMAGE_DLLCHARACTERISTICS_GUARD_CF
 #define IMAGE_DLLCHARACTERISTICS_GUARD_CF 0x4000
@@ -117,16 +118,22 @@ static void SubsystemName(uint16_t m, char* out, int cap)
     snprintf(out, cap, "%s", s);
 }
 
-static bool Sha256(const uint8_t* data, size_t n, char out[65], std::atomic<float>* progress)
+static bool HashHex(LPCWSTR alg_id, const uint8_t* data, size_t n, char* out, int cap,
+    std::atomic<float>* progress, float p0, float p1)
 {
     out[0] = 0;
     BCRYPT_ALG_HANDLE alg = nullptr;
     BCRYPT_HASH_HANDLE hash = nullptr;
     DWORD obj_len = 0, cb = 0, hash_len = 0;
-    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
+    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, alg_id, nullptr, 0)))
         return false;
     BCryptGetProperty(alg, BCRYPT_OBJECT_LENGTH, (PUCHAR)&obj_len, sizeof(obj_len), &cb, 0);
     BCryptGetProperty(alg, BCRYPT_HASH_LENGTH, (PUCHAR)&hash_len, sizeof(hash_len), &cb, 0);
+    if (hash_len * 2 + 1 > (DWORD)cap)
+    {
+        BCryptCloseAlgorithmProvider(alg, 0);
+        return false;
+    }
     std::vector<uint8_t> obj(obj_len);
     std::vector<uint8_t> dig(hash_len);
     if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, obj.data(), obj_len, nullptr, 0, 0)))
@@ -143,16 +150,89 @@ static bool Sha256(const uint8_t* data, size_t n, char out[65], std::atomic<floa
             take = chunk;
         BCryptHashData(hash, (PUCHAR)(data + off), (ULONG)take, 0);
         off += take;
-        if (progress)
-            progress->store(0.08f + 0.18f * (float)off / (float)n);
+        if (progress && n)
+            progress->store(p0 + (p1 - p0) * (float)off / (float)n);
     }
     BCryptFinishHash(hash, dig.data(), hash_len, 0);
     BCryptDestroyHash(hash);
     BCryptCloseAlgorithmProvider(alg, 0);
-    for (DWORD i = 0; i < hash_len && i < 32; i++)
+    for (DWORD i = 0; i < hash_len; i++)
         snprintf(out + i * 2, 3, "%02x", dig[i]);
-    out[64] = 0;
+    out[hash_len * 2] = 0;
     return true;
+}
+
+static void HashFile(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* progress)
+{
+    HashHex(BCRYPT_MD5_ALGORITHM, data, n, out->md5, (int)sizeof(out->md5), progress, 0.08f, 0.12f);
+    HashHex(BCRYPT_SHA1_ALGORITHM, data, n, out->sha1, (int)sizeof(out->sha1), progress, 0.12f, 0.16f);
+    HashHex(BCRYPT_SHA256_ALGORITHM, data, n, out->sha256, (int)sizeof(out->sha256), progress, 0.16f, 0.22f);
+    HashHex(BCRYPT_SHA512_ALGORITHM, data, n, out->sha512, (int)sizeof(out->sha512), progress, 0.22f, 0.28f);
+}
+
+static void DllStem(const char* dll, char* out, int cap)
+{
+    out[0] = 0;
+    if (!dll || cap < 2)
+        return;
+    const char* slash = strrchr(dll, '\\');
+    const char* fwd = strrchr(dll, '/');
+    if (fwd && (!slash || fwd > slash))
+        slash = fwd;
+    const char* p = slash ? slash + 1 : dll;
+    int i = 0;
+    while (p[i] && i < cap - 1)
+    {
+        out[i] = (char)tolower((unsigned char)p[i]);
+        i++;
+    }
+    out[i] = 0;
+    char* dot = strrchr(out, '.');
+    if (dot && (strcmp(dot, ".dll") == 0 || strcmp(dot, ".ocx") == 0 ||
+        strcmp(dot, ".sys") == 0 || strcmp(dot, ".drv") == 0))
+        *dot = 0;
+}
+
+static void ImpHash(PeFile* pe)
+{
+    pe->imphash[0] = 0;
+    if (!pe || pe->imports.empty())
+        return;
+    std::string blob;
+    blob.reserve(2048);
+    for (const PeImportDll& d : pe->imports)
+    {
+        char stem[96];
+        DllStem(d.name.c_str(), stem, (int)sizeof(stem));
+        if (!stem[0])
+            continue;
+        for (const PeImportFn& fn : d.fns)
+        {
+            if (!blob.empty())
+                blob.push_back(',');
+            blob.append(stem);
+            blob.push_back('.');
+            if (fn.name[0] && fn.ordinal == 0)
+            {
+                for (char c : fn.name)
+                    blob.push_back((char)tolower((unsigned char)c));
+            }
+            else
+            {
+                char ord[24];
+                snprintf(ord, sizeof(ord), "ord%u", fn.ordinal ? fn.ordinal : 0);
+                blob.append(ord);
+            }
+            if (blob.size() > 256u * 1024u)
+                break;
+        }
+        if (blob.size() > 256u * 1024u)
+            break;
+    }
+    if (blob.empty())
+        return;
+    HashHex(BCRYPT_MD5_ALGORITHM, (const uint8_t*)blob.data(), blob.size(),
+        pe->imphash, (int)sizeof(pe->imphash), nullptr, 0.f, 0.f);
 }
 
 static void ParseRich(const uint8_t* b, size_t n, uint32_t e_lfanew, PeFile* out)
@@ -761,74 +841,6 @@ static void ParseClr(const uint8_t* b, size_t n, PeFile* pe)
     pe->clr_entry = h->EntryPointToken;
 }
 
-static bool HasDll(const PeFile* pe, const char* needle)
-{
-    for (const PeImportDll& d : pe->imports)
-    {
-        if (_stricmp(d.name.c_str(), needle) == 0)
-            return true;
-    }
-    return false;
-}
-
-static bool SecHas(const PeFile* pe, const char* part)
-{
-    for (int i = 0; i < pe->section_n; i++)
-    {
-        if (_strnicmp(pe->sections[i].name, part, (int)strlen(part)) == 0)
-            return true;
-        if (strstr(pe->sections[i].name, part))
-            return true;
-    }
-    return false;
-}
-
-static void Detect(PeFile* pe)
-{
-    // import/section name heuristics. not DIE's signature db, same idea.
-    // credit: https://github.com/horsicq/Detect-It-Easy
-    // credit: https://github.com/upx/upx (UPX0/UPX1 section names)
-    snprintf(pe->compiler, sizeof(pe->compiler), "unknown");
-    snprintf(pe->packer, sizeof(pe->packer), "none");
-
-    if (pe->has_com)
-        snprintf(pe->compiler, sizeof(pe->compiler), ".NET (CLR)");
-    else if (HasDll(pe, "vcruntime140.dll") || HasDll(pe, "vcruntime140_1.dll") || HasDll(pe, "msvcp140.dll"))
-        snprintf(pe->compiler, sizeof(pe->compiler), "MSVC (ucrt / VS 2015+)");
-    else if (HasDll(pe, "msvcr120.dll") || HasDll(pe, "msvcp120.dll"))
-        snprintf(pe->compiler, sizeof(pe->compiler), "MSVC 2013");
-    else if (HasDll(pe, "msvcr100.dll"))
-        snprintf(pe->compiler, sizeof(pe->compiler), "MSVC 2010");
-    else if (HasDll(pe, "msvcrt.dll") && !pe->rich.empty())
-        snprintf(pe->compiler, sizeof(pe->compiler), "MSVC (msvcrt + Rich)");
-    else if (HasDll(pe, "libgcc_s_dw2-1.dll") || HasDll(pe, "libstdc++-6.dll") || HasDll(pe, "libgcc_s_seh-1.dll"))
-        snprintf(pe->compiler, sizeof(pe->compiler), "MinGW GCC");
-    else if (HasDll(pe, "borlndmm.dll") || HasDll(pe, "cc32240mt.dll"))
-        snprintf(pe->compiler, sizeof(pe->compiler), "Borland / Embarcadero");
-    else if (!pe->rich.empty())
-        snprintf(pe->compiler, sizeof(pe->compiler), "MSVC (Rich header)");
-
-    if (SecHas(pe, "UPX") || SecHas(pe, "UPX0") || SecHas(pe, "UPX1"))
-        snprintf(pe->packer, sizeof(pe->packer), "UPX");
-    else if (SecHas(pe, ".vmp") || SecHas(pe, "vmp0") || SecHas(pe, ".VMP"))
-        snprintf(pe->packer, sizeof(pe->packer), "VMProtect");
-        // credit: https://vmpsoft.com/ (section naming is public RE folklore, not their SDK)
-    else if (SecHas(pe, ".themida") || SecHas(pe, ".winlice"))
-        snprintf(pe->packer, sizeof(pe->packer), "Themida");
-    else if (SecHas(pe, ".aspack") || SecHas(pe, ".adata"))
-        snprintf(pe->packer, sizeof(pe->packer), "ASPack");
-    else if (SecHas(pe, ".nsp") || SecHas(pe, "nsp0"))
-        snprintf(pe->packer, sizeof(pe->packer), "NsPack");
-    else if (SecHas(pe, "MPRESS"))
-        snprintf(pe->packer, sizeof(pe->packer), "MPRESS");
-    else if (SecHas(pe, ".petite"))
-        snprintf(pe->packer, sizeof(pe->packer), "Petite");
-    else if (SecHas(pe, ".enigma"))
-        snprintf(pe->packer, sizeof(pe->packer), "Enigma");
-    else if (HasDll(pe, "vmprotectsdk32.dll") || HasDll(pe, "vmprotectsdk64.dll"))
-        snprintf(pe->packer, sizeof(pe->packer), "VMProtect");
-}
-
 bool PeAddrFromRva(const PeFile* pe, uint32_t rva, PeAddr* out)
 {
     if (!pe || !out)
@@ -1165,84 +1177,6 @@ static void ExtractStrings(const uint8_t* b, size_t n, PeFile* pe)
     flush_utf();
 }
 
-static void AddFinding(PeFile* pe, PeFindingSev sev, const char* title, const char* why)
-{
-    PeFinding f{};
-    f.sev = sev;
-    snprintf(f.title, sizeof(f.title), "%s", title);
-    snprintf(f.why, sizeof(f.why), "%s", why);
-    pe->findings.push_back(f);
-}
-
-static void CollectFindings(PeFile* pe)
-{
-    if (pe->e_lfanew > kUnusualDosStubThreshold)
-        AddFinding(pe, PeFindingNotice, "Large DOS stub / e_lfanew",
-            "e_lfanew is unusually far from the DOS header.");
-    if (pe->sections_n == 0)
-        AddFinding(pe, PeFindingWarn, "No sections", "NumberOfSections is 0.");
-    if (pe->timestamp == 0 || pe->timestamp == 0xFFFFFFFFu)
-        AddFinding(pe, PeFindingNotice, "Unusual timestamp", "TimeDateStamp is 0 or 0xFFFFFFFF.");
-    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) == 0)
-        AddFinding(pe, PeFindingNotice, "NX (DEP) not advertised", "IMAGE_DLLCHARACTERISTICS_NX_COMPAT is clear.");
-    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) == 0)
-        AddFinding(pe, PeFindingNotice, "ASLR not advertised", "IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE is clear.");
-    if ((pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) == 0)
-        AddFinding(pe, PeFindingInfo, "CFG not advertised", "IMAGE_DLLCHARACTERISTICS_GUARD_CF is clear.");
-    if (pe->pe32plus && (pe->dllchars & IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA) == 0)
-        AddFinding(pe, PeFindingInfo, "High-entropy VA not advertised", "PE32+ without HIGH_ENTROPY_VA.");
-    if (pe->checksum != 0 && !pe->checksum_ok)
-        AddFinding(pe, PeFindingNotice, "PE checksum mismatch", "Optional header CheckSum does not match the computed checksum.");
-
-    for (int i = 0; i < pe->section_n; i++)
-    {
-        const PeSection& s = pe->sections[i];
-        if ((s.chars & IMAGE_SCN_MEM_EXECUTE) && (s.chars & IMAGE_SCN_MEM_WRITE))
-        {
-            char why[240];
-            snprintf(why, sizeof(why), "Section \"%s\" is executable and writable.", s.name);
-            AddFinding(pe, PeFindingWarn, "Writable and executable section", why);
-        }
-        uint64_t vend = (uint64_t)s.vaddr + (s.vsize ? s.vsize : s.rawsize);
-        if (pe->size_of_image && vend > pe->size_of_image)
-        {
-            char why[240];
-            snprintf(why, sizeof(why), "Section \"%s\" virtual range extends past SizeOfImage.", s.name);
-            AddFinding(pe, PeFindingWarn, "Section exceeds SizeOfImage", why);
-        }
-    }
-    if (pe->overlay_size)
-        AddFinding(pe, PeFindingNotice, "Overlay data", "Bytes exist after the last section raw range.");
-
-    PeAddr ep;
-    PeAddrFromRva(pe, pe->entry_rva, &ep);
-    if (pe->entry_rva && ep.section_index < 0)
-        AddFinding(pe, PeFindingWarn, "Entry point outside sections", "AddressOfEntryPoint is not in a section.");
-    else if (ep.section_index >= 0)
-    {
-        if (strncmp(ep.section_name, "UPX", 3) == 0 || strcmp(ep.section_name, ".themida") == 0 ||
-            strcmp(ep.section_name, ".aspack") == 0)
-            AddFinding(pe, PeFindingNotice, "Unusual entry point section", "Entry point section name is associated with packers.");
-    }
-    if (pe->imports.empty() && (pe->chars & IMAGE_FILE_DLL) == 0)
-        AddFinding(pe, PeFindingNotice, "No imports", "No import or delay-load descriptors were parsed.");
-    if (pe->tls.present && !pe->tls.callback_rvas.empty())
-        AddFinding(pe, PeFindingNotice, "TLS callbacks present", "The loader runs TLS callbacks before the entry point.");
-    if (pe->pdb_path[0])
-        AddFinding(pe, PeFindingInfo, "PDB path present", "CodeView debug info contains a PDB path.");
-    for (const PeEntropyRange& r : pe->entropy)
-    {
-        if (r.size >= 256 && r.entropy >= kHighEntropyThreshold)
-        {
-            char title[80];
-            snprintf(title, sizeof(title), "High entropy: %s", r.label);
-            AddFinding(pe, PeFindingNotice, title, "Shannon entropy is high (possible compression or packing).");
-        }
-    }
-    if (pe->section_align == 0 || pe->file_align == 0)
-        AddFinding(pe, PeFindingWarn, "Zero alignment", "SectionAlignment or FileAlignment is 0.");
-}
-
 bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* progress)
 {
     *out = PeFile{};
@@ -1269,7 +1203,7 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         return false;
     }
 
-    Sha256(data, n, out->sha256, progress);
+    HashFile(data, n, out, progress);
     if (progress)
         progress->store(0.28f);
 
@@ -1325,6 +1259,8 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         }
         out->entry_rva = oh->AddressOfEntryPoint;
         out->image_base = oh->ImageBase;
+        out->linker_major = oh->MajorLinkerVersion;
+        out->linker_minor = oh->MinorLinkerVersion;
         out->section_align = oh->SectionAlignment;
         out->file_align = oh->FileAlignment;
         out->size_of_image = oh->SizeOfImage;
@@ -1346,6 +1282,8 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         }
         out->entry_rva = oh->AddressOfEntryPoint;
         out->image_base = oh->ImageBase;
+        out->linker_major = oh->MajorLinkerVersion;
+        out->linker_minor = oh->MinorLinkerVersion;
         out->section_align = oh->SectionAlignment;
         out->file_align = oh->FileAlignment;
         out->size_of_image = oh->SizeOfImage;
@@ -1417,6 +1355,7 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
     if (progress)
         progress->store(0.62f);
     ParseImports(data, n, out);
+    ImpHash(out);
     if (progress)
         progress->store(0.78f);
     ParseExports(data, n, out);
@@ -1449,11 +1388,12 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
     if (progress)
         progress->store(0.95f);
     ExtractStrings(data, n, out);
-    Detect(out);
-    CollectFindings(out);
+    out->ok = true;
+    DetectApplyToPe(out, data, n);
+    AnalyzeRun(out, data, n);
+    PeCollectFindings(out);
     if (progress)
         progress->store(1.f);
-    out->ok = true;
     return true;
 }
 
@@ -1638,6 +1578,13 @@ bool PePatchBytes(uint32_t off, const uint8_t* src, uint32_t n)
     memcpy(g_bytes.data() + off, src, n);
     g_dirty = true;
     return true;
+}
+
+uint32_t PeImageRvaToOff(const PeFile* pe, uint32_t rva)
+{
+    if (!pe)
+        return 0;
+    return RvaToOff(pe, rva);
 }
 
 uint32_t PeRvaToFileOff(uint32_t rva)

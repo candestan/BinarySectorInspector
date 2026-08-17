@@ -1,5 +1,8 @@
 #pragma once
 
+#include "detect/detect.h"
+#include "analyze/analyze.h"
+
 #include <stdint.h>
 #include <vector>
 #include <string>
@@ -110,11 +113,27 @@ enum PeFindingSev
     PeFindingWarn
 };
 
+enum PeFindingKind : uint8_t
+{
+    PeFindAnomaly = 0,
+    PeFindHardening,
+    PeFindPacking,
+    PeFindNetwork,
+    PeFindExecution,
+    PeFindInjection,
+    PeFindPersistence,
+    PeFindIdentity,
+    PeFindCrypto
+};
+
 struct PeFinding
 {
     PeFindingSev sev;
+    PeFindingKind kind;
     char         title[80];
     char         why[240];
+    char         evidence[192];
+    uint32_t     file_off;
 };
 
 struct PeAddr
@@ -194,9 +213,26 @@ struct PeFile
     char     error[256];
     char     path[260];
     uint64_t size;
+    char     md5[33];
+    char     sha1[41];
     char     sha256[65];
+    char     sha512[129];
+    char     imphash[33];
     char     compiler[96];
     char     packer[96];
+    char     protector[96];
+    char     obfuscator[96];
+    bool     compiler_detected;
+    bool     packer_detected;
+    bool     protector_detected;
+    bool     obfuscator_detected;
+    DetectConfidence compiler_conf;
+    DetectConfidence packer_conf;
+    DetectConfidence protector_conf;
+    DetectConfidence obfuscator_conf;
+    uint8_t  linker_major;
+    uint8_t  linker_minor;
+    std::vector<DetectionResult> detections;
 
     bool     pe32plus;
     uint32_t e_lfanew;
@@ -247,6 +283,7 @@ struct PeFile
     std::vector<PeVerInfo>   versions;
     std::vector<PeIconImg>   icons;
     std::vector<PeTypelib>   typelibs;
+    std::vector<AnalysisArtifact> analysis;
     std::vector<PeRelocBlock> relocs;
     PeTlsInfo                tls;
     std::vector<PeDebugEntry> debug;
@@ -265,6 +302,7 @@ struct PeFile
 };
 
 bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* progress);
+void PeCollectFindings(PeFile* pe);
 
 void        PeJobStart(const char* path);
 void        PeJobShutdown();
@@ -286,6 +324,7 @@ bool        PePatchBytes(uint32_t off, const uint8_t* src, uint32_t n);
 bool        PePatchVerFixed(int index);
 bool        PePatchVerString(int ver_index, int str_index, const char* utf8);
 uint32_t    PeRvaToFileOff(uint32_t rva);
+uint32_t    PeImageRvaToOff(const PeFile* pe, uint32_t rva);
 bool        PeAddrFromRva(const PeFile* pe, uint32_t rva, PeAddr* out);
 bool        PeExportIco(int icon_index, const char* path);
 bool        PeReplaceIco(int icon_index, const char* path);

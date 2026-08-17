@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "heuristic.packed.entropy_imports",
+  "name": "Likely packed",
+  "category": "packer",
+  "product_key": "generic.packed",
+  "heuristic": true,
+  "confidence": "low",
+  "author": "candestan",
+  "description": "High section entropy and a reduced import table. Not a product identification.",
+  "conditions": {
+    "all": [
+      { "has_com": false },
+      { "section_entropy": { "min": 7.2 } },
+      { "import_dll_count": { "max": 2 } }
+    ]
+  }
+}

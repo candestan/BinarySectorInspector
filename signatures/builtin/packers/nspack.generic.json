@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "packer.nspack.generic",
+  "name": "NsPack",
+  "category": "packer",
+  "product_key": "nspack",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "NsPack section names nsp0 / .nsp.",
+  "conditions": {
+    "any": [
+      { "section_name": "nsp0", "match": "contains" },
+      { "section_name": ".nsp", "match": "contains" }
+    ]
+  }
+}

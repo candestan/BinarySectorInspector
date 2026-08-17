@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "dotnet.confuserex.generic",
+  "name": "ConfuserEx",
+  "category": "dotnet_obfuscator",
+  "vendor": "ConfuserEx",
+  "product_key": "confuserex",
+  "confidence": "high",
+  "requires_clr": true,
+  "author": "candestan",
+  "reference": "https://github.com/mkaring/ConfuserEx",
+  "description": "ConfusedByAttribute type or ConfuserEx product string.",
+  "conditions": {
+    "any": [
+      { "type_name": "ConfusedByAttribute" },
+      { "string_contains": "ConfusedByAttribute" },
+      { "string_contains": "ConfuserEx" }
+    ]
+  }
+}

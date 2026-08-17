@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "compiler.mingw.gcc",
+  "name": "MinGW GCC",
+  "category": "compiler",
+  "vendor": "MinGW",
+  "product_key": "mingw.gcc",
+  "confidence": "high",
+  "author": "candestan",
+  "description": "MinGW runtime DLLs (libgcc / libstdc++).",
+  "conditions": {
+    "any": [
+      { "imported_dll": "libgcc_s_seh-1.dll" },
+      { "imported_dll": "libgcc_s_dw2-1.dll" },
+      { "imported_dll": "libstdc++-6.dll" }
+    ]
+  }
+}

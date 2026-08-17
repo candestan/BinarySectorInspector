@@ -21,6 +21,7 @@ static std::deque<LogEntry>  g_entries;
 static std::recursive_mutex  g_mu;
 static std::mutex            g_reg_mu;
 static std::vector<LogPluginRec> g_plugins;
+static std::vector<std::string>  g_builtin_mods[8];
 static uint64_t              g_seq;
 static bool                  g_show_sev[LogSevCount];
 static bool                  g_show_builtin[6];
@@ -95,7 +96,11 @@ static void FormatSource(char* out, int cap, uint32_t source_id, uint32_t module
     out[0] = 0;
     if (source_id < LogPluginBase)
     {
-        snprintf(out, cap, "%s", LogBuiltinLabel((LogBuiltin)source_id));
+        const char* lab = LogBuiltinLabel((LogBuiltin)source_id);
+        if (source_id < 8 && module_id > 0 && module_id <= g_builtin_mods[source_id].size())
+            snprintf(out, cap, "%s > %s", lab, g_builtin_mods[source_id][module_id - 1].c_str());
+        else
+            snprintf(out, cap, "%s", lab);
         return;
     }
     std::lock_guard<std::mutex> lock(g_reg_mu);
@@ -481,8 +486,36 @@ void LogScope::Critical(const char* fmt, ...) const
 LogScope LogScope::Module(const char* module_name) const
 {
     LogScope out = *this;
+    if (source_id < LogPluginBase)
+    {
+        if (!module_name || !module_name[0] || source_id >= 8)
+            return out;
+        std::lock_guard<std::mutex> lock(g_reg_mu);
+        auto& v = g_builtin_mods[source_id];
+        for (int i = 0; i < (int)v.size(); i++)
+        {
+            if (v[i] == module_name)
+            {
+                out.module_id = (uint32_t)i + 1;
+                return out;
+            }
+        }
+        if (v.size() >= 32)
+            return out;
+        v.push_back(module_name);
+        out.module_id = (uint32_t)v.size();
+        return out;
+    }
     out.module_id = LogRegisterPluginModule(source_id, module_name);
     return out;
+}
+
+LogScope LogFor(LogBuiltin src)
+{
+    LogScope s{};
+    s.source_id = (uint32_t)src;
+    s.module_id = 0;
+    return s;
 }
 
 LogScope LogPlugin(const char* id, const char* display_name)

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "compiler.dotnet.clr",
+  "name": ".NET (CLR)",
+  "category": "compiler",
+  "vendor": "Microsoft",
+  "product_key": "dotnet.clr",
+  "confidence": "high",
+  "requires_clr": true,
+  "author": "candestan",
+  "description": "IMAGE_COR20_HEADER / CLR directory present.",
+  "conditions": {
+    "has_com": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "id": "dotnet.obfuscar.generic",
+  "name": "Obfuscar",
+  "category": "dotnet_obfuscator",
+  "vendor": "Obfuscar",
+  "product_key": "obfuscar",
+  "confidence": "medium",
+  "requires_clr": true,
+  "author": "candestan",
+  "reference": "https://github.com/obfuscar/obfuscar",
+  "description": "Obfuscar product string. Medium because the token can appear in unrelated text.",
+  "conditions": {
+    "string_contains": "Obfuscar"
+  }
+}

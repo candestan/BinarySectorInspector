@@ -55,7 +55,13 @@ float ThemeChromeBtnW() { return ThemePx(40.f); }
 int ThemeChromeButtonCount() { return 4; } // settings, min, max, close
 float ThemeLabelW() { return ThemePx(200.f); }
 float ThemeTreeMinW() { return ThemePx(168.f); }
-float ThemeSplitHit() { return ThemePx(5.f); }
+float ThemeSplitHit() { return ThemePx(8.f); }
+float ThemeMenuPadX() { return ThemePx(12.f); }
+float ThemeMenuPadY() { return ThemePx(7.f); }
+float ThemePopupPad() { return ThemePx(8.f); }
+float ThemeHitMin() { return ThemePx(22.f); }
+float ThemeRowH() { return ThemePx(24.f); }
+float ThemeTooltipPad() { return ThemePx(8.f); }
 
 static void RefreshDpi()
 {
@@ -265,15 +271,19 @@ void ThemeApply()
     s.PopupBorderSize = 1.f;
     s.FrameBorderSize = 1.f;
     s.WindowPadding = ImVec2(ThemeSpaceMd(), ThemeSpaceSm());
-    s.FramePadding = ImVec2(ThemeSpaceSm(), ThemePx(5.f));
-    s.ItemSpacing = ImVec2(ThemeSpaceSm(), ThemeSpaceXs() + 2.f);
-    s.ItemInnerSpacing = ImVec2(ThemeSpaceXs() + 2.f, ThemeSpaceXs());
-    s.CellPadding = ImVec2(ThemeSpaceSm(), ThemePx(5.f));
+    s.FramePadding = ImVec2(ThemePx(10.f), ThemePx(6.f));
+    s.ItemSpacing = ImVec2(ThemePx(10.f), ThemePx(6.f));
+    s.ItemInnerSpacing = ImVec2(ThemePx(6.f), ThemePx(4.f));
+    s.CellPadding = ImVec2(ThemePx(8.f), ThemePx(5.f));
     s.IndentSpacing = ThemeSpaceMd();
-    s.ScrollbarSize = ThemePx(10.f);
-    s.GrabMinSize = ThemePx(10.f);
-    s.HoverStationaryDelay = 0.35f;
-    s.HoverDelayShort = 0.15f;
+    s.ScrollbarSize = ThemePx(12.f);
+    s.GrabMinSize = ThemePx(12.f);
+    s.TouchExtraPadding = ImVec2(0.f, ThemePx(2.f));
+    s.DisplaySafeAreaPadding = ImVec2(ThemeSpaceSm(), ThemeSpaceSm());
+    s.HoverStationaryDelay = 0.18f;
+    s.HoverDelayShort = 0.12f;
+    s.HoverDelayNormal = 0.40f;
+    s.DisabledAlpha = 0.42f;
     s.AntiAliasedLines = true;
     s.AntiAliasedLinesUseTex = true;
     s.AntiAliasedFill = true;
@@ -287,8 +297,8 @@ void ThemeApply()
     c[ImGuiCol_Border]                = T(kBorder);
     c[ImGuiCol_BorderShadow]          = T(kBg, 0.f);
     c[ImGuiCol_FrameBg]               = T(kInput);
-    c[ImGuiCol_FrameBgHovered]        = T(kMuted);
-    c[ImGuiCol_FrameBgActive]         = T(kMuted);
+    c[ImGuiCol_FrameBgHovered]        = T(kBorder);
+    c[ImGuiCol_FrameBgActive]         = T(kAccent, 0.18f);
     c[ImGuiCol_TitleBg]               = T(kBg);
     c[ImGuiCol_TitleBgActive]         = T(kBg);
     c[ImGuiCol_TitleBgCollapsed]      = T(kBg);
@@ -302,12 +312,12 @@ void ThemeApply()
     c[ImGuiCol_SliderGrabActive]      = T(kFg);
     c[ImGuiCol_Button]                = T(kCard, 0.f);
     c[ImGuiCol_ButtonHovered]         = T(kMuted);
-    c[ImGuiCol_ButtonActive]          = T(kFg, 0.12f);
+    c[ImGuiCol_ButtonActive]          = T(kAccent, 0.22f);
     c[ImGuiCol_Header]                = T(kMuted);
-    c[ImGuiCol_HeaderHovered]         = T(kMuted);
-    c[ImGuiCol_HeaderActive]          = T(kBorder);
+    c[ImGuiCol_HeaderHovered]         = T(kBorder);
+    c[ImGuiCol_HeaderActive]          = T(kAccent, 0.35f);
     c[ImGuiCol_Separator]             = T(kBorder);
-    c[ImGuiCol_SeparatorHovered]      = T(kFg, 0.35f);
+    c[ImGuiCol_SeparatorHovered]      = T(kAccent, 0.55f);
     c[ImGuiCol_SeparatorActive]       = T(kAccent);
     c[ImGuiCol_ResizeGrip]            = T(kBorder);
     c[ImGuiCol_ResizeGripHovered]     = T(kAccent, 0.70f);
@@ -330,8 +340,16 @@ static bool ChromeBtn(const char* id, ImVec2 a, float w, float h)
 {
     ImGui::SetCursorScreenPos(a);
     bool hit = ImGui::InvisibleButton(id, ImVec2(w, h));
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        t = 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (t > 0.01f)
+        dl->AddRectFilled(a, ImVec2(a.x + w, a.y + h), UiLerpCol(ThemeColBgA(0.f), ThemeColHover(), t));
     UiHandIfHovered();
-    UiHoverSweep(a, ImVec2(a.x + w, a.y + h), UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
+    UiHoverSweep(a, ImVec2(a.x + w, a.y + h), t);
     return hit;
 }
 

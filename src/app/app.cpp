@@ -9,6 +9,7 @@
 #include "engine/engine.h"
 #include "persist/settings.h"
 #include "pe/pe.h"
+#include "detect/detect.h"
 #include "log/log.h"
 #include "platform/window_process.h"
 #include "imgui.h"
@@ -35,11 +36,13 @@ void AppInit()
     I18nInit();
     ThemePackInit();
     LogInit();
+    DetectInit();
 }
 
 void AppShutdown()
 {
     PeJobShutdown();
+    DetectShutdown();
     LogShutdown();
 }
 
