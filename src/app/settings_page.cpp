@@ -142,8 +142,7 @@ static void LangCombo()
     ImGui::SetNextWindowPos(ImVec2(btn_p.x, btn_p.y + ImGui::GetFrameHeight() + 4.f), ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(w, 8.f + (full_h - 8.f) * ease));
     ImGui::SetNextWindowBgAlpha(ease);
-    UiPushPopupMetrics();
-    if (ImGui::BeginPopup("lang_combo"))
+    if (UiBeginPopup("lang_combo"))
     {
         for (int i = 0; i < I18nCount(); i++)
         {
@@ -153,9 +152,8 @@ static void LangCombo()
             if (sel)
                 ImGui::SetItemDefaultFocus();
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
-    UiPopPopupMetrics();
 }
 
 static void DrawGeneral()
@@ -806,7 +804,7 @@ static void PlugResetFilters()
 
 static void DrawPluginFilterPopup()
 {
-    if (!ImGui::BeginPopup("plugin_filter"))
+    if (!UiBeginPopup("plugin_filter"))
         return;
     ImGui::TextUnformatted(I18nGet("plugin.filter_status"));
     if (ImGui::RadioButton(I18nGet("plugin.filter_all"), g_plug_status == 0))
@@ -836,7 +834,7 @@ static void DrawPluginFilterPopup()
     ImGui::Spacing();
     if (UiButton(I18nGet("plugin.filter_reset")))
         PlugResetFilters();
-    ImGui::EndPopup();
+    UiEndPopup();
 }
 
 static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
@@ -899,11 +897,11 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
         ImGui::SameLine();
         if (UiButton(I18nGet("settings.plugins.settings")))
             ImGui::OpenPopup("pset");
-        if (ImGui::BeginPopup("pset"))
+        if (UiBeginPopup("pset"))
         {
             ImGui::SetNextItemWidth(ThemePx(280.f));
             PluginDrawSettings(i);
-            ImGui::EndPopup();
+            UiEndPopup();
         }
     }
     else if (PluginEnabled(i) && !PluginInited(i))
@@ -1030,7 +1028,7 @@ static void DrawPySlot(int family)
         }
     }
 
-    if (ImGui::BeginPopup(pop))
+    if (UiBeginPopup(pop))
     {
         if (ImGui::MenuItem(I18nGet("settings.scripting.none")))
         {
@@ -1052,7 +1050,7 @@ static void DrawPySlot(int family)
                 ScriptingPySet(family, buf);
             }
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
 
     ImGui::SetNextItemWidth(-1.f);
