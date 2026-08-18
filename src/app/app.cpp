@@ -10,6 +10,7 @@
 #include "persist/settings.h"
 #include "pe/pe.h"
 #include "detect/detect.h"
+#include "analyze/engine.h"
 #include "plugin/plugin.h"
 #include "runtime/scripting.h"
 #include "tool/tool.h"
@@ -40,6 +41,7 @@ void AppInit()
     ThemePackInit();
     LogInit();
     DetectInit();
+    AnalyzeEngineInit();
     ToolInit();
     PluginInit();
     ScriptingInit();
@@ -206,7 +208,13 @@ static void DrawWindowPicker()
     ImGui::OpenPopup("winpick");
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(ThemePx(720.f), ThemePx(480.f)), ImGuiCond_Appearing);
+    float pw = SettingsLayoutHas("window.picker.w") ? SettingsLayoutGet("window.picker.w", 720.f) : 720.f;
+    float ph = SettingsLayoutHas("window.picker.h") ? SettingsLayoutGet("window.picker.h", 480.f) : 480.f;
+    if (pw < 360.f)
+        pw = 360.f;
+    if (ph < 240.f)
+        ph = 240.f;
+    ImGui::SetNextWindowSize(ImVec2(ThemePx(pw), ThemePx(ph)), ImGuiCond_Appearing);
     char title[160];
     snprintf(title, sizeof(title), "%s###winpick", I18nGet("welcome.from_window"));
     if (!ImGui::BeginPopupModal(title, &g_win_pick, ImGuiWindowFlags_None))
@@ -237,15 +245,19 @@ static void DrawWindowPicker()
         UiEmpty(I18nGet("pe.none"));
         ImGui::EndChild();
     }
-    else if (ImGui::BeginTable("wins", 3,
-        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_SizingStretchProp, ImVec2(-1.f, -foot)))
+    else
     {
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("welcome.window_title"), ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("PID", ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
-        ImGui::TableSetupColumn(I18nGet("welcome.window_image"), ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableHeadersRow();
+        UiTableColDef win_cols[] = {
+            { "title", I18nGet("welcome.window_title"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+            { "pid", I18nGet("welcome.pid"), ImGuiTableColumnFlags_WidthFixed, 72.f },
+            { "image", I18nGet("welcome.window_image"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+        };
+        if (UiBeginPersistTable("window_picker", win_cols, 3,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_SizingStretchProp, ImVec2(-1.f, -foot)))
+        {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableHeadersRow();
         ImGuiListClipper clip;
         clip.Begin(nv);
         while (clip.Step())
@@ -257,7 +269,7 @@ static void DrawWindowPicker()
                 ImGui::TableNextColumn();
                 ImGui::PushID(i);
                 bool sel = (g_win_sel == i);
-                if (ImGui::Selectable(g_win_rows[i].title[0] ? g_win_rows[i].title : "(untitled)", sel,
+                if (ImGui::Selectable(g_win_rows[i].title[0] ? g_win_rows[i].title : I18nGet("welcome.untitled"), sel,
                     ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick))
                 {
                     g_win_sel = i;
@@ -272,11 +284,12 @@ static void DrawWindowPicker()
                 ImGui::Text("%lu", (unsigned long)g_win_rows[i].pid);
                 ImGui::TableNextColumn();
                 const char* img = strrchr(g_win_rows[i].image_path, '\\');
-                ImGui::TextUnformatted(img ? img + 1 : (g_win_rows[i].image_path[0] ? g_win_rows[i].image_path : "(access denied)"));
+                ImGui::TextUnformatted(img ? img + 1 : (g_win_rows[i].image_path[0] ? g_win_rows[i].image_path : I18nGet("welcome.access_denied")));
                 ImGui::PopID();
             }
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
+        }
     }
 
     bool can = g_win_sel >= 0 && g_win_sel < g_win_n && g_win_rows[g_win_sel].image_path[0];
@@ -297,6 +310,12 @@ static void DrawWindowPicker()
         g_win_pick = false;
         ImGui::CloseCurrentPopup();
     }
+    ImVec2 wsz = ImGui::GetWindowSize();
+    float dpi = ThemeDpi();
+    if (dpi < 0.5f)
+        dpi = 1.f;
+    SettingsLayoutSet("window.picker.w", wsz.x / dpi);
+    SettingsLayoutSet("window.picker.h", wsz.y / dpi);
     ImGui::EndPopup();
 }
 
@@ -337,23 +356,23 @@ void AppDraw()
     DrawWindowPicker();
 
     if (!UiAnimEnabled())
+        g_page_sweep = 1.f;
+    else if (g_page_sweep < 1.f)
     {
-        g_page_sweep = 1.f;
-        return;
+        g_page_sweep += ImGui::GetIO().DeltaTime * 3.4f;
+        if (g_page_sweep > 1.f)
+            g_page_sweep = 1.f;
+        float e = UiEaseOut(g_page_sweep);
+        float fade = 1.f - e;
+        ImVec2 a = ImGui::GetWindowPos();
+        ImVec2 b = ImVec2(a.x + ImGui::GetWindowSize().x, a.y + ImGui::GetWindowSize().y);
+        ImDrawList* fg = ImGui::GetForegroundDrawList();
+        fg->AddRectFilled(a, b, ThemeColBgA(fade * 0.55f));
+        float y = a.y + ThemeTitleBarH();
+        float x1 = a.x + (b.x - a.x) * e;
+        fg->AddLine(ImVec2(a.x, y), ImVec2(x1, y), ThemeWithAlpha(ThemeColAccent(), fade), 2.f);
+        UiHoverSweep(a, b, e, fade * 0.65f, fg);
     }
-    if (g_page_sweep >= 1.f)
-        return;
-    g_page_sweep += ImGui::GetIO().DeltaTime * 3.4f;
-    if (g_page_sweep > 1.f)
-        g_page_sweep = 1.f;
-    float e = UiEaseOut(g_page_sweep);
-    float fade = 1.f - e;
-    ImVec2 a = ImGui::GetWindowPos();
-    ImVec2 b = ImVec2(a.x + ImGui::GetWindowSize().x, a.y + ImGui::GetWindowSize().y);
-    ImDrawList* fg = ImGui::GetForegroundDrawList();
-    fg->AddRectFilled(a, b, ThemeColBgA(fade * 0.55f));
-    float y = a.y + ThemeTitleBarH();
-    float x1 = a.x + (b.x - a.x) * e;
-    fg->AddLine(ImVec2(a.x, y), ImVec2(x1, y), ThemeWithAlpha(ThemeColAccent(), fade), 2.f);
-    UiHoverSweep(a, b, e, fade * 0.65f, fg);
+    UiToastDraw();
+    SettingsTick();
 }

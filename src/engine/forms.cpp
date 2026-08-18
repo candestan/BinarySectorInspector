@@ -176,6 +176,18 @@ Form* SpawnForm(const char* name, int w, int h)
             int mh = mi.rcWork.bottom - mi.rcWork.top;
             if (ww > mw) ww = mw;
             if (hh > mh) hh = mh;
+            if (x < mi.rcWork.left)
+                x = mi.rcWork.left;
+            if (y < mi.rcWork.top)
+                y = mi.rcWork.top;
+            if (x + ww > mi.rcWork.right)
+                x = mi.rcWork.right - ww;
+            if (y + hh > mi.rcWork.bottom)
+                y = mi.rcWork.bottom - hh;
+            if (x < mi.rcWork.left)
+                x = mi.rcWork.left;
+            if (y < mi.rcWork.top)
+                y = mi.rcWork.top;
         }
     }
     g_spawn_n++;

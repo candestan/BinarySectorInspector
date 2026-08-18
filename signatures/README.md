@@ -72,6 +72,12 @@ Leaves (only types the current PE/.NET fact model can evaluate):
 | `section_count` | number or `{min,max,eq}` |
 | `section_chars` | characteristics mask, or `{mask,name}` |
 | `section_entropy` | `{min, name?}` Shannon entropy 0–8 |
+| `section_raw_size` | `{name?, min, max, eq}` SizeOfRawData |
+| `odd_section_names` | `{min}` count of short `.` names that contain punctuation |
+| `virtual_only_before_entry` | `{min}` mapped sections before AddressOfEntryPoint with no raw data (not BSS/UNINIT) |
+| `entry_section_chars` | `{mask}` characteristics of the section that contains the entry point |
+| `entry_section_raw_size` | `{min,max,eq}` SizeOfRawData of the entry section |
+| `entry_section_entropy` | `{min}` Shannon entropy of the entry section |
 | `entry_point_bytes` | wildcard pattern at AddressOfEntryPoint |
 | `byte_pattern` | pattern; `where`: `entry` (default), `file`, `overlay` |
 | `imported_dll` | import DLL name |

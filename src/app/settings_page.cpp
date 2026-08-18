@@ -1,5 +1,6 @@
 #include "app/settings_page.h"
 #include "app/app.h"
+#include "app/inspector.h"
 #include "ui/theme.h"
 #include "ui/theme_pack.h"
 #include "ui/icons.h"
@@ -9,6 +10,7 @@
 
 #include "engine/engine.h"
 #include "persist/settings.h"
+#include "persist/paths.h"
 #include "log/log.h"
 #include "detect/detect.h"
 #include "plugin/plugin.h"
@@ -141,8 +143,7 @@ static void LangCombo()
     ImGui::SetNextWindowPos(ImVec2(btn_p.x, btn_p.y + ImGui::GetFrameHeight() + 4.f), ImGuiCond_Appearing);
     ImGui::SetNextWindowSize(ImVec2(w, 8.f + (full_h - 8.f) * ease));
     ImGui::SetNextWindowBgAlpha(ease);
-    UiPushPopupMetrics();
-    if (ImGui::BeginPopup("lang_combo"))
+    if (UiBeginPopup("lang_combo"))
     {
         for (int i = 0; i < I18nCount(); i++)
         {
@@ -152,9 +153,8 @@ static void LangCombo()
             if (sel)
                 ImGui::SetItemDefaultFocus();
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
-    UiPopPopupMetrics();
 }
 
 static void DrawGeneral()
@@ -179,6 +179,216 @@ static void DrawGeneral()
     ImGui::PopStyleColor();
     if (ThemeFontSmall())
         ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("settings.layout.title"));
+    if (ImFont* sm = ThemeFontSmall())
+        ImGui::PushFont(sm);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+    ImGui::TextUnformatted(I18nGet("settings.layout.hint"));
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    if (ThemeFontSmall())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    if (UiButton(I18nGet("settings.layout.reset")))
+        ImGui::OpenPopup("reset_layout");
+    if (UiBeginPopup("reset_layout"))
+    {
+        ImGui::TextWrapped("%s", I18nGet("settings.layout.reset_confirm"));
+        ImGui::Spacing();
+        if (UiButton(I18nGet("settings.layout.reset_ok"), ImVec2(0.f, 0.f), 1))
+        {
+            SettingsLayoutResetWorkspace();
+            InspectorReloadLayout();
+            UiToastPush(UiToastInfo, I18nGet("toast.layout.reset"), nullptr);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (UiButton(I18nGet("settings.back")))
+            ImGui::CloseCurrentPopup();
+        UiEndPopup();
+    }
+}
+
+static ID3D11ShaderResourceView* g_bsi_icon_srv;
+static int g_bsi_icon_w;
+static int g_bsi_icon_h;
+static bool g_bsi_icon_tried;
+
+static ID3D11ShaderResourceView* BsiIconTex()
+{
+    if (!g_bsi_icon_tried)
+    {
+        g_bsi_icon_tried = true;
+        char path[MAX_PATH];
+        PathsAssetFile(path, MAX_PATH, "app.ico");
+        TexLoadFile(path, &g_bsi_icon_srv, &g_bsi_icon_w, &g_bsi_icon_h);
+    }
+    return g_bsi_icon_srv;
+}
+
+static void DrawPurpleSkull(ImDrawList* dl, ImVec2 c, float scale)
+{
+    if (!dl || scale < 4.f)
+        return;
+    const ImU32 col = IM_COL32(168, 96, 240, 220);
+    const ImU32 dark = IM_COL32(72, 32, 120, 255);
+    dl->AddCircleFilled(c, scale, col, 28);
+    dl->AddRectFilled(ImVec2(c.x - scale * 0.58f, c.y + scale * 0.12f),
+        ImVec2(c.x + scale * 0.58f, c.y + scale * 0.92f), col);
+    dl->AddCircleFilled(ImVec2(c.x - scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
+    dl->AddCircleFilled(ImVec2(c.x + scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
+    dl->AddTriangleFilled(
+        ImVec2(c.x, c.y + scale * 0.08f),
+        ImVec2(c.x - scale * 0.12f, c.y + scale * 0.28f),
+        ImVec2(c.x + scale * 0.12f, c.y + scale * 0.28f), dark);
+    for (int i = -2; i <= 2; i++)
+    {
+        float x = c.x + (float)i * scale * 0.17f;
+        dl->AddLine(ImVec2(x, c.y + scale * 0.42f), ImVec2(x, c.y + scale * 0.78f), dark, 1.6f);
+    }
+}
+
+static void DrawKuaraPlaceholder(ImDrawList* dl, ImVec2 img0, ImVec2 img1)
+{
+    dl->AddRectFilledMultiColor(img0, img1,
+        IM_COL32(28, 36, 58, 255), IM_COL32(40, 28, 64, 255),
+        IM_COL32(52, 36, 88, 255), IM_COL32(24, 48, 72, 255));
+    ImFont* font = ThemeFontTitle() ? ThemeFontTitle() : ImGui::GetFont();
+    float fs = ImGui::GetFontSize() * 1.15f;
+    const char* label = "KUARA";
+    ImVec2 ts = font->CalcTextSizeA(fs, 1e9f, 0.f, label);
+    ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f);
+    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(220, 220, 255, 255), label);
+}
+
+static void DrawEngineBrand(DetectEngineKind kind, ImDrawList* dl, ImVec2 img0, ImVec2 img1)
+{
+    if (kind == DetectEngineInternal)
+    {
+        ID3D11ShaderResourceView* icon = BsiIconTex();
+        if (icon)
+            dl->AddImage(ImTextureRef((void*)icon), img0, img1);
+        else
+        {
+            dl->AddRectFilled(img0, img1, ThemeColInput());
+            IconDrawRole(IconShield, ImVec2((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f),
+                IconRoleLg, ThemeColAccent());
+        }
+        ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.52f);
+        DrawPurpleSkull(dl, c, (img1.x - img0.x) * 0.22f);
+        return;
+    }
+    DrawKuaraPlaceholder(dl, img0, img1);
+}
+
+static void DrawEngineInfoRow(const char* label, const char* value)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(ThemePx(148.f));
+    ImGui::TextWrapped("%s", value && value[0] ? value : "-");
+}
+
+static bool DrawEngineOption(DetectEngineKind kind, DetectEngineKind active, float card_w, float card_h, float img_h)
+{
+    DetectEngineInfo info{};
+    DetectEngineFillInfo(kind, &info);
+    ImGui::PushID((int)kind);
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    bool hit = ImGui::InvisibleButton("engine_pick", ImVec2(card_w, card_h));
+    ImVec2 p1 = ImGui::GetItemRectMax();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const bool selected = active == kind;
+    dl->AddRectFilled(p0, p1, ThemeColCard());
+    dl->AddRect(p0, p1, selected ? ThemeColAccent() : ThemeColBorder(), 0.f, 0, selected ? 2.f : 1.f);
+    UiHandIfHovered();
+    UiHoverSweep(p0, p1, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || selected));
+
+    ImVec2 img0(p0.x + 10.f, p0.y + 10.f);
+    ImVec2 img1(p0.x + card_w - 10.f, p0.y + 10.f + img_h);
+    DrawEngineBrand(kind, dl, img0, img1);
+    dl->AddRect(img0, img1, selected ? ThemeColAccent() : ThemeColBorder(), 0.f, 0, 1.f);
+
+    float tx = p0.x + 12.f;
+    float ty = img1.y + 10.f;
+    dl->AddText(ImVec2(tx, ty), ThemeColFg(), I18nGet(info.name_key));
+    ty += ImGui::GetTextLineHeight() + 4.f;
+    dl->PushClipRect(ImVec2(tx, ty), ImVec2(p1.x - 12.f, p1.y - 10.f), true);
+    dl->AddText(nullptr, 0.f, ImVec2(tx, ty), ThemeColMuted(), I18nGet(info.desc_key), nullptr, card_w - 24.f);
+    dl->PopClipRect();
+
+    if (hit && !selected)
+    {
+        DetectSetEngine(kind);
+        DetectReapplyOpenFile();
+        UiToastPush(UiToastInfo, I18nGet("toast.engine.title"), I18nGet("toast.engine.body"));
+    }
+    ImGui::PopID();
+    return hit && !selected;
+}
+
+static void DrawDetectionEngineSettings()
+{
+    UiSection(I18nGet("settings.detection.engine"));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.detection.engine.hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    DetectEngineKind active = DetectEngineActive();
+    const float card_w = ThemePx(280.f);
+    const float img_h = ThemePx(120.f);
+    const float card_h = ThemePx(220.f);
+    const float gap = ThemePx(16.f);
+    DrawEngineOption(DetectEngineKuara, active, card_w, card_h, img_h);
+    ImGui::SameLine(0.f, gap);
+    DrawEngineOption(DetectEngineInternal, active, card_w, card_h, img_h);
+    ImGui::Spacing();
+
+    DetectEngineInfo info{};
+    DetectEngineFillInfo(active, &info);
+    UiSection(I18nGet("settings.detection.engine.info"));
+    float info_w = card_w * 2.f + gap;
+    if (info_w > ImGui::GetContentRegionAvail().x)
+        info_w = ImGui::GetContentRegionAvail().x;
+    ImVec2 panel_p = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(info_w, ThemePx(248.f)));
+    ImVec2 panel_q(panel_p.x + info_w, panel_p.y + ThemePx(248.f));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(panel_p, panel_q, ThemeColCard());
+    dl->AddRect(panel_p, panel_q, ThemeColBorder());
+
+    ImVec2 img0(panel_p.x + 12.f, panel_p.y + 12.f);
+    ImVec2 img1(panel_p.x + 12.f + ThemePx(128.f), panel_p.y + 12.f + ThemePx(128.f));
+    DrawEngineBrand(active, dl, img0, img1);
+    dl->AddRect(img0, img1, ThemeColBorder());
+
+    ImGui::SetCursorScreenPos(ImVec2(img1.x + 16.f, panel_p.y + 14.f));
+    ImGui::BeginGroup();
+    if (ImFont* t = ThemeFontTitle())
+        ImGui::PushFont(t);
+    ImGui::TextUnformatted(I18nGet(info.name_key));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet(info.desc_key));
+    if (!info.brand_url || !info.brand_url[0])
+        ImGui::TextWrapped("%s", I18nGet("settings.detection.engine.image_pending"));
+    ImGui::PopStyleColor();
+    ImGui::EndGroup();
+
+    ImGui::SetCursorScreenPos(ImVec2(panel_p.x + 12.f, img1.y + 16.f));
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.id"), info.id);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.version"), info.version);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.author"), info.author);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.status"),
+        I18nGet(info.ready ? "settings.detection.engine.ready" : "settings.detection.engine.not_ready"));
+    ImGui::SetCursorScreenPos(ImVec2(panel_p.x, panel_q.y + ThemeSpaceSm()));
 }
 
 static void DrawDetectionSettings()
@@ -188,6 +398,9 @@ static void DrawDetectionSettings()
     ImGui::TextUnformatted(I18nGet("settings.detection"));
     if (ThemeFontTitle())
         ImGui::PopFont();
+    ImGui::Spacing();
+
+    DrawDetectionEngineSettings();
     ImGui::Spacing();
 
     bool packers = DetectSettingPackers();
@@ -469,22 +682,20 @@ static void DrawThemes()
         }
 
         if (hit)
+        {
             ThemePackApplyFile(t->file);
+            UiToastPush(UiToastInfo, I18nGet("toast.theme.title"), I18nGet("toast.theme.body"));
+        }
         ImGui::PopID();
     }
 }
 
 static char g_plug_q[128];
-static bool g_plug_in_name = true;
-static bool g_plug_in_id = true;
-static bool g_plug_in_author = true;
 static int  g_plug_status; // 0 all, 1 enabled, 2 disabled
 static char g_plug_auth[32][80];
 static uint8_t g_plug_auth_on[32];
 static int  g_plug_auth_n;
 static char g_plug_auth_sig[512];
-static bool g_plug_search_open;
-static bool g_plug_filter_open;
 
 static void LowerAscii(char* s)
 {
@@ -596,20 +807,17 @@ static bool PlugMatches(int i)
         return false;
     if (!g_plug_q[0])
         return true;
-    bool hit = false;
-    if (g_plug_in_name && PlugHay(PluginName(i), g_plug_q))
-        hit = true;
-    if (g_plug_in_id && PlugHay(PluginId(i), g_plug_q))
-        hit = true;
-    if (g_plug_in_author && PlugHay(PluginAuthor(i), g_plug_q))
-        hit = true;
-    return hit;
+    if (PlugHay(PluginName(i), g_plug_q))
+        return true;
+    if (PlugHay(PluginId(i), g_plug_q))
+        return true;
+    if (PlugHay(PluginAuthor(i), g_plug_q))
+        return true;
+    return false;
 }
 
 static bool PlugFilterDirty()
 {
-    if (!g_plug_in_name || !g_plug_in_id || !g_plug_in_author)
-        return true;
     if (g_plug_status != 0)
         return true;
     for (int i = 0; i < g_plug_auth_n; i++)
@@ -622,62 +830,15 @@ static bool PlugFilterDirty()
 
 static void PlugResetFilters()
 {
-    g_plug_in_name = true;
-    g_plug_in_id = true;
-    g_plug_in_author = true;
     g_plug_status = 0;
     for (int i = 0; i < g_plug_auth_n; i++)
         g_plug_auth_on[i] = 1;
 }
 
-static void DrawPluginSearchDialog()
+static void DrawPluginFilterPopup()
 {
-    if (g_plug_search_open)
-        ImGui::OpenPopup("plugin_search");
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
-    char title[160];
-    snprintf(title, sizeof(title), "%s###plugin_search", I18nGet("plugin.search_title"));
-    if (!ImGui::BeginPopupModal(title, &g_plug_search_open, ImGuiWindowFlags_AlwaysAutoResize))
+    if (!UiBeginPopup("plugin_filter"))
         return;
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-    ImGui::TextWrapped("%s", I18nGet("plugin.search_hint"));
-    ImGui::PopStyleColor();
-    ImGui::Spacing();
-    ImGui::TextUnformatted(I18nGet("plugin.search_query"));
-    ImGui::SetNextItemWidth(-1.f);
-    if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-    ImGui::InputText("##plugq", g_plug_q, (int)sizeof(g_plug_q));
-    ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
-    {
-        g_plug_search_open = false;
-        ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (UiButton(I18nGet("plugin.search_clear")))
-        g_plug_q[0] = 0;
-    ImGui::EndPopup();
-}
-
-static void DrawPluginFilterDialog()
-{
-    if (g_plug_filter_open)
-        ImGui::OpenPopup("plugin_filter");
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
-    char title[160];
-    snprintf(title, sizeof(title), "%s###plugin_filter", I18nGet("plugin.filter_title"));
-    if (!ImGui::BeginPopupModal(title, &g_plug_filter_open, ImGuiWindowFlags_AlwaysAutoResize))
-        return;
-    ImGui::TextUnformatted(I18nGet("plugin.filter_in"));
-    UiCheckbox("fn", I18nGet("plugin.filter_name"), &g_plug_in_name);
-    UiCheckbox("fid", I18nGet("plugin.filter_package"), &g_plug_in_id);
-    UiCheckbox("fau", I18nGet("plugin.filter_author"), &g_plug_in_author);
-    ImGui::Spacing();
     ImGui::TextUnformatted(I18nGet("plugin.filter_status"));
     if (ImGui::RadioButton(I18nGet("plugin.filter_all"), g_plug_status == 0))
         g_plug_status = 0;
@@ -692,7 +853,7 @@ static void DrawPluginFilterDialog()
         ImGui::Spacing();
         ImGui::TextUnformatted(I18nGet("plugin.filter_authors"));
         float h = ImGui::GetTextLineHeightWithSpacing() * (float)(g_plug_auth_n > 6 ? 6 : g_plug_auth_n) + 8.f;
-        ImGui::BeginChild("authlist", ImVec2(-1.f, h), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("authlist", ImVec2(ThemePx(280.f), h), ImGuiChildFlags_Borders);
         for (int i = 0; i < g_plug_auth_n; i++)
         {
             ImGui::PushID(i);
@@ -704,15 +865,9 @@ static void DrawPluginFilterDialog()
         ImGui::EndChild();
     }
     ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
-    {
-        g_plug_filter_open = false;
-        ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
     if (UiButton(I18nGet("plugin.filter_reset")))
         PlugResetFilters();
-    ImGui::EndPopup();
+    UiEndPopup();
 }
 
 static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
@@ -752,12 +907,10 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
         char by[120];
         snprintf(by, sizeof(by), "%s %s", I18nGet("settings.made_by"), PluginAuthor(i));
         dl->AddText(ImVec2(tx, ty), ThemeColMuted(), by);
-        ty += ImGui::GetTextLineHeight() + 2.f;
+        ty += ImGui::GetTextLineHeight() + 6.f;
     }
-    char pkg[160];
-    snprintf(pkg, sizeof(pkg), "%s  %s", I18nGet("plugin.package"), PluginId(i));
-    dl->AddText(ImVec2(tx, ty), ThemeColMuted(), pkg);
-    ty += ImGui::GetTextLineHeight() + 6.f;
+    else
+        ty += 2.f;
     if (PluginDescription(i)[0])
     {
         dl->PushClipRect(ImVec2(tx, ty), ImVec2(p1.x - 12.f, p1.y - ThemePx(48.f)), true);
@@ -777,11 +930,11 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
         ImGui::SameLine();
         if (UiButton(I18nGet("settings.plugins.settings")))
             ImGui::OpenPopup("pset");
-        if (ImGui::BeginPopup("pset"))
+        if (UiBeginPopup("pset"))
         {
             ImGui::SetNextItemWidth(ThemePx(280.f));
             PluginDrawSettings(i);
-            ImGui::EndPopup();
+            UiEndPopup();
         }
     }
     else if (PluginEnabled(i) && !PluginInited(i))
@@ -808,20 +961,19 @@ static void DrawPlugins()
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
     ImGui::TextWrapped("%s", I18nGet("settings.plugins_hint"));
     ImGui::PopStyleColor();
+    PlugSyncAuthors();
     ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.search"), ImVec2(0, 0), g_plug_q[0] ? 1 : 0))
-        g_plug_search_open = true;
+    ImGui::SetNextItemWidth(-ThemePx(196.f));
+    ImGui::InputTextWithHint("##plugq", I18nGet("plugin.search_hint"), g_plug_q, (int)sizeof(g_plug_q));
     ImGui::SameLine();
-    if (UiButton(I18nGet("plugin.filter"), ImVec2(0, 0), PlugFilterDirty() ? 1 : 0))
-        g_plug_filter_open = true;
+    if (UiButton(I18nGet("plugin.filter"), ImVec2(ThemePx(88.f), 0.f), PlugFilterDirty() ? 1 : 0))
+        ImGui::OpenPopup("plugin_filter");
+    DrawPluginFilterPopup();
     ImGui::SameLine();
     if (UiButton(I18nGet("plugin.rescan")))
         PluginRescan();
-    DrawPluginSearchDialog();
-    DrawPluginFilterDialog();
     ImGui::Spacing();
 
-    PlugSyncAuthors();
     int n = PluginCount();
     if (n == 0)
     {
@@ -843,7 +995,7 @@ static void DrawPlugins()
 
     float cell_w = ThemePx(280.f);
     float img_h = ThemePx(140.f);
-    float cell_h = ThemePx(318.f);
+    float cell_h = ThemePx(296.f);
     float gap = ThemePx(16.f);
     float avail = ImGui::GetContentRegionAvail().x;
     int cols = (int)((avail + gap) / (cell_w + gap));
@@ -909,7 +1061,7 @@ static void DrawPySlot(int family)
         }
     }
 
-    if (ImGui::BeginPopup(pop))
+    if (UiBeginPopup(pop))
     {
         if (ImGui::MenuItem(I18nGet("settings.scripting.none")))
         {
@@ -931,7 +1083,7 @@ static void DrawPySlot(int family)
                 ScriptingPySet(family, buf);
             }
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
 
     ImGui::SetNextItemWidth(-1.f);

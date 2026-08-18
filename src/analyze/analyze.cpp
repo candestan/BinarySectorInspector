@@ -7,13 +7,17 @@
 #include <string.h>
 #include <vector>
 
-static std::vector<const AnalyzerProvider*> g_providers;
-static bool g_inited;
+static std::vector<const AnalyzerProvider*>& Providers()
+{
+    static std::vector<const AnalyzerProvider*> v;
+    return v;
+}
 
 void AnalyzeRegister(const AnalyzerProvider* provider)
 {
     if (!provider || !provider->id || !provider->analyze)
         return;
+    std::vector<const AnalyzerProvider*>& g_providers = Providers();
     for (const AnalyzerProvider* p : g_providers)
     {
         if (p && _stricmp(p->id, provider->id) == 0)
@@ -24,13 +28,6 @@ void AnalyzeRegister(const AnalyzerProvider* provider)
 
 void AnalyzeInit()
 {
-    if (g_inited)
-        return;
-    g_inited = true;
-    AnalyzeRegisterPy2Exe();
-    AnalyzeRegisterGo();
-    AnalyzeRegisterAutoIt();
-    AnalyzeRegisterAhk();
 }
 
 void AnalyzeStamp(AnalysisArtifact* art, const char* provider_id, const char* group)
@@ -226,7 +223,7 @@ const AnalyzerProvider* AnalyzeFindProvider(const char* id)
 {
     if (!id || !id[0])
         return nullptr;
-    for (const AnalyzerProvider* p : g_providers)
+    for (const AnalyzerProvider* p : Providers())
     {
         if (p && _stricmp(p->id, id) == 0)
             return p;
@@ -298,7 +295,7 @@ void AnalyzeRun(PeFile* pe, const uint8_t* data, size_t n)
     pe->analysis.clear();
     if (!pe->ok || !data)
         return;
-    for (const AnalyzerProvider* p : g_providers)
+    for (const AnalyzerProvider* p : Providers())
     {
         if (!p || !Applicable(pe, p->apply))
             continue;

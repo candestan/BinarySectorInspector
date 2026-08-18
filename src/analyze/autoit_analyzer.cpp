@@ -462,7 +462,4 @@ static const AnalyzerProvider kAutoItProvider = {
     ExportAutoIt
 };
 
-void AnalyzeRegisterAutoIt()
-{
-    AnalyzeRegister(&kAutoItProvider);
-}
+static AnalyzerSelfRegister g_autoit_reg(&kAutoItProvider);

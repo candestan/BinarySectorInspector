@@ -2,6 +2,7 @@
 
 #include "detect/detect.h"
 #include "analyze/analyze.h"
+#include "findings/findings.h"
 
 #include <stdint.h>
 #include <vector>
@@ -299,6 +300,7 @@ struct PeFile
     std::vector<PeEntropyRange> entropy;
     std::vector<PeStringEntry>  strings;
     std::vector<PeFinding>      findings;
+    AnalysisReport              report;
     uint32_t overlay_off;
     uint64_t overlay_size;
 

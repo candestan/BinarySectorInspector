@@ -1277,7 +1277,4 @@ static const AnalyzerProvider kPy2ExeProvider = {
     ExportPy2Exe
 };
 
-void AnalyzeRegisterPy2Exe()
-{
-    AnalyzeRegister(&kPy2ExeProvider);
-}
+static AnalyzerSelfRegister g_py2exe_reg(&kPy2ExeProvider);

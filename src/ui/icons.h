@@ -26,6 +26,7 @@ enum
     IconGo,
     IconEdit,
     IconReplace,
+    IconCopy,
 };
 
 enum

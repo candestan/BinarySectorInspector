@@ -27,7 +27,7 @@ Third-party code stays under its own licenses:
   imgui_club  — third_party/imgui_club     https://github.com/ocornut/imgui_club
   FreeType    — third_party/freetype       https://github.com/freetype/freetype  (FTL)
   nlohmann/json — third_party/nlohmann_json https://github.com/nlohmann/json
-Snippet credits (Rich header, DIE-style heuristics, MSFT typelib, DComp, etc.)
+Snippet credits (Rich header, DIE-style heuristics, MSFT typelib, DComp, VMPStatic VMProtect layout, etc.)
 are in-source as `credit: <url>` comments.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

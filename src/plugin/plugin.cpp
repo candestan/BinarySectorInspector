@@ -901,6 +901,18 @@ static int RecHexCursor(void*, uint32_t* file_off, uint32_t* size)
     return 1;
 }
 
+static void RecToast(void*, int type, const char* title, const char* body)
+{
+    UiToastType t = UiToastInfo;
+    if (type == BsiToastSuccess)
+        t = UiToastSuccess;
+    else if (type == BsiToastWarning)
+        t = UiToastWarning;
+    else if (type == BsiToastError)
+        t = UiToastError;
+    UiToastPush(t, title, body);
+}
+
 static void UiLabel(void*, const char* text)
 {
     if (text)
@@ -1126,6 +1138,7 @@ static void FillHost(PluginRec* p)
     p->host.rva_to_off = RecRvaToOff;
     p->host.off_to_rva = RecOffToRva;
     p->host.hex_cursor = RecHexCursor;
+    p->host.toast = RecToast;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

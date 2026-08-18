@@ -16,3 +16,6 @@
 [submodule "plugins/lydis"]
 	path = plugins/lydis
 	url = https://github.com/Septillioner/bsi-lydis
+[submodule "third_party/kuara_dynamic"]
+	path = third_party/kuara_dynamic
+	url = https://github.com/candestan/KUARA-Dynamic.git

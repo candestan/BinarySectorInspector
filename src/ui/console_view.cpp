@@ -67,13 +67,13 @@ static ImU32 SevColor(LogSeverity sev)
     case LogSevInfo:
         return ThemeColFg();
     case LogSevSuccess:
-        return ThemeColRgb(0x6BCB8E);
+        return ThemeColLogSuccess();
     case LogSevWarning:
-        return ThemeColRgb(0xE6B84D);
+        return ThemeColLogWarning();
     case LogSevError:
-        return ThemeColRgb(0xE07070);
+        return ThemeColLogError();
     case LogSevCritical:
-        return ThemeColRgb(0xFF5555);
+        return ThemeColLogCritical();
     default:
         return ThemeColFg();
     }
@@ -493,6 +493,7 @@ static void RunExport()
     {
         LogError(LogBuiltinUI, "Log export failed to open: %s", path);
         SetStatus(I18nGet("log.export.failed"));
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
         return;
     }
     setvbuf(f, nullptr, _IOFBF, 64 * 1024);
@@ -506,11 +507,13 @@ static void RunExport()
     {
         LogError(LogBuiltinUI, "Log export write failed: %s", path);
         SetStatus(I18nGet("log.export.failed"));
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
         return;
     }
     char msg[256];
     snprintf(msg, sizeof(msg), I18nGet("log.export.success"), (int)rows.size(), FileNameOf(path));
     SetStatus(msg);
+    UiToastPush(UiToastSuccess, I18nGet("toast.export.success.title"), I18nGet("toast.export.success.body"));
     LogInfo(LogBuiltinUI, "%s", msg);
 }
 
@@ -589,7 +592,7 @@ static void DrawExportPopup()
         ImGui::OpenPopup("log_export");
         g_open_export = false;
     }
-    if (!ImGui::BeginPopup("log_export"))
+    if (!UiBeginPopup("log_export"))
         return;
     ImGui::TextUnformatted(I18nGet("log.export.title"));
     ImGui::Separator();
@@ -626,7 +629,7 @@ static void DrawExportPopup()
         g_do_export = true;
         ImGui::CloseCurrentPopup();
     }
-    ImGui::EndPopup();
+    UiEndPopup();
 }
 
 static void HandleConsoleKeys()
@@ -687,7 +690,7 @@ void ConsoleViewDraw()
     ImGui::SameLine();
     if (ImGui::Button(I18nGet("log.filters")))
         ImGui::OpenPopup("log_filters");
-    if (ImGui::BeginPopup("log_filters"))
+    if (UiBeginPopup("log_filters"))
     {
         ImGui::TextUnformatted(I18nGet("log.severity"));
         for (int i = 0; i < LogSevCount; i++)
@@ -743,7 +746,7 @@ void ConsoleViewDraw()
             g_search[0] = 0;
             RebuildVisible();
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
     if (!g_sel.empty())
     {
@@ -770,7 +773,13 @@ void ConsoleViewDraw()
 
     ImGuiTableFlags tf = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
         ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV;
-    if (!ImGui::BeginTable("logtbl", 4, tf))
+    UiTableColDef log_cols[] = {
+        { "time", I18nGet("log.col.time"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowTime() ? 64.f : 0.f },
+        { "level", I18nGet("log.col.level"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowLevel() ? 52.f : 0.f },
+        { "source", I18nGet("log.col.source"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowSource() ? 140.f : 0.f },
+        { "message", I18nGet("log.col.message"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+    };
+    if (!UiBeginPersistTable("console", log_cols, 4, tf))
     {
         HandleConsoleKeys();
         ImGui::EndChild();
@@ -784,19 +793,6 @@ void ConsoleViewDraw()
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (LogSettingsShowTime())
-        ImGui::TableSetupColumn(I18nGet("log.col.time"), ImGuiTableColumnFlags_WidthFixed, ThemePx(64.f));
-    else
-        ImGui::TableSetupColumn("##t", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    if (LogSettingsShowLevel())
-        ImGui::TableSetupColumn(I18nGet("log.col.level"), ImGuiTableColumnFlags_WidthFixed, ThemePx(52.f));
-    else
-        ImGui::TableSetupColumn("##l", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    if (LogSettingsShowSource())
-        ImGui::TableSetupColumn(I18nGet("log.col.source"), ImGuiTableColumnFlags_WidthFixed, ThemePx(140.f));
-    else
-        ImGui::TableSetupColumn("##s", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    ImGui::TableSetupColumn(I18nGet("log.col.message"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
 
     if (ImFont* mono = ThemeFontMono())
@@ -908,7 +904,7 @@ void ConsoleViewDraw()
 
     if (ThemeFontMono())
         ImGui::PopFont();
-    ImGui::EndTable();
+    UiEndPersistTable();
 
     HandleConsoleKeys();
     ImGui::EndChild();

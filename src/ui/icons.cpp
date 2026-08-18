@@ -82,6 +82,7 @@ static float GlyphOptical(int icon)
     case IconSearch:  return 1.08f;
     case IconGo:      return 1.06f;
     case IconReplace: return 1.06f;
+    case IconCopy:    return 1.02f;
     case IconPlay:    return 1.04f;
     case IconTree:    return 1.04f;
     case IconGear:    return 0.92f;
@@ -130,6 +131,7 @@ static const char* IconEmojiGlyph(int icon)
     case IconGo:       return "\xE2\x9E\xA1";       // ➡
     case IconEdit:     return "\xE2\x9C\x8F";       // ✏
     case IconReplace:  return "\xF0\x9F\x94\x84";   // 🔄
+    case IconCopy:     return "\xF0\x9F\x93\x8B";   // 📋
     default:           return nullptr;
     }
 }
@@ -293,6 +295,10 @@ void IconDraw(int icon, ImVec2 c, float s, unsigned int col, ImDrawList* dl)
         dl->AddLine(ImVec2(x1 - s * 0.16f, y0 + s * 0.28f), ImVec2(c.x + s * 0.18f, y0 + s * 0.08f), col, sw);
         dl->AddLine(ImVec2(x0 + s * 0.16f, y1 - s * 0.28f), ImVec2(x1 - s * 0.16f, y1 - s * 0.28f), col, sw);
         dl->AddLine(ImVec2(x0 + s * 0.16f, y1 - s * 0.28f), ImVec2(c.x - s * 0.18f, y1 - s * 0.08f), col, sw);
+        break;
+    case IconCopy:
+        dl->AddRect(ImVec2(x0 + s * 0.20f, y0 + s * 0.24f), ImVec2(x1 - s * 0.08f, y1 - s * 0.08f), col, 0.f, 0, sw);
+        dl->AddRect(ImVec2(x0 + s * 0.08f, y0 + s * 0.12f), ImVec2(x1 - s * 0.20f, y1 - s * 0.20f), col, 0.f, 0, sw);
         break;
     }
 }

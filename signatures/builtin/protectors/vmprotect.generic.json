@@ -6,15 +6,27 @@
   "vendor": "VMProtect Software",
   "product_key": "vmprotect",
   "confidence": "high",
+  "native_only": true,
   "author": "candestan",
   "reference": "https://vmpsoft.com/",
-  "description": "VMProtect section names (.vmp0 / vmp0) or SDK import.",
+  "notes": "3.10+ layout (virtual-only originals before a high-entropy entry stub) follows VMPStatic detectVMP310 — https://github.com/notsnakesilent/VMPStatic/blob/main/main.go",
+  "description": "VMProtect 2.x section names (.vmp0) or SDK imports, or 3.10+ mutated layout: swallowed sections left virtual-only and the entry stub owns the on-disk payload.",
   "conditions": {
     "any": [
-      { "section_name": ".vmp0" },
+      { "section_name": ".vmp", "match": "contains" },
       { "section_name": "vmp0", "match": "contains" },
       { "imported_dll": "vmprotectsdk32.dll" },
-      { "imported_dll": "vmprotectsdk64.dll" }
+      { "imported_dll": "vmprotectsdk64.dll" },
+      { "string_contains": "VMProtectBegin" },
+      { "string_contains": "VMProtectEnd" },
+      {
+        "all": [
+          { "virtual_only_before_entry": { "min": 3 }, "weight": 40 },
+          { "entry_section_chars": { "mask": 1610612736 }, "weight": 15 },
+          { "entry_section_raw_size": { "min": 1 }, "weight": 15 },
+          { "entry_section_entropy": { "min": 7.0 }, "weight": 30 }
+        ]
+      }
     ]
   }
 }

@@ -632,6 +632,135 @@ static bool ParseCond(const nlohmann::json& j, Cond* out, int depth, std::string
         out->weight = ClampWeight(w, 10);
         return true;
     }
+    if (j.contains("section_raw_size"))
+    {
+        out->kind = CondSectionRawSize;
+        out->weight = ClampWeight(w, 20);
+        const auto& v = j["section_raw_size"];
+        if (!v.is_object())
+        {
+            *err = "section_raw_size must be {name?,min,max,eq}";
+            return false;
+        }
+        out->i0 = 0;
+        out->i1 = 0x7fffffff;
+        JsInt(v, "min", &out->i0);
+        if (v.contains("eq"))
+        {
+            JsInt(v, "eq", &out->i0);
+            out->i1 = out->i0;
+        }
+        JsInt(v, "max", &out->i1);
+        if (v.contains("name") && v["name"].is_string())
+            out->a = v["name"].get<std::string>();
+        return true;
+    }
+    if (j.contains("odd_section_names"))
+    {
+        out->kind = CondOddSectionNames;
+        out->weight = ClampWeight(w, 35);
+        const auto& v = j["odd_section_names"];
+        out->i0 = 2;
+        if (v.is_boolean())
+        {
+            if (!v.get<bool>())
+            {
+                *err = "odd_section_names false is not useful; omit the leaf";
+                return false;
+            }
+        }
+        else if (v.is_number())
+            out->i0 = v.get<int>();
+        else if (v.is_object())
+            JsInt(v, "min", &out->i0);
+        else
+        {
+            *err = "odd_section_names must be true, a count, or {min}";
+            return false;
+        }
+        if (out->i0 < 1)
+            out->i0 = 1;
+        return true;
+    }
+    if (j.contains("virtual_only_before_entry"))
+    {
+        out->kind = CondVirtualOnlyBeforeEntry;
+        out->weight = ClampWeight(w, 35);
+        out->i0 = 1;
+        const auto& v = j["virtual_only_before_entry"];
+        if (v.is_number())
+            out->i0 = v.get<int>();
+        else if (v.is_object())
+            JsInt(v, "min", &out->i0);
+        else
+        {
+            *err = "virtual_only_before_entry must be a count or {min}";
+            return false;
+        }
+        if (out->i0 < 1)
+            out->i0 = 1;
+        return true;
+    }
+    if (j.contains("entry_section_chars"))
+    {
+        out->kind = CondEntrySectionChars;
+        out->weight = ClampWeight(w, 12);
+        const auto& v = j["entry_section_chars"];
+        if (v.is_number())
+            out->i0 = (int)v.get<uint32_t>();
+        else if (v.is_object() && v.contains("mask") && v["mask"].is_number())
+            out->i0 = (int)v["mask"].get<uint32_t>();
+        else
+        {
+            *err = "entry_section_chars must be a mask or {mask}";
+            return false;
+        }
+        return true;
+    }
+    if (j.contains("entry_section_raw_size"))
+    {
+        out->kind = CondEntrySectionRawSize;
+        out->weight = ClampWeight(w, 20);
+        const auto& v = j["entry_section_raw_size"];
+        if (!v.is_object())
+        {
+            *err = "entry_section_raw_size must be {min,max,eq}";
+            return false;
+        }
+        out->i0 = 0;
+        out->i1 = 0x7fffffff;
+        JsInt(v, "min", &out->i0);
+        if (v.contains("eq"))
+        {
+            JsInt(v, "eq", &out->i0);
+            out->i1 = out->i0;
+        }
+        JsInt(v, "max", &out->i1);
+        return true;
+    }
+    if (j.contains("entry_section_entropy"))
+    {
+        out->kind = CondEntrySectionEntropy;
+        out->weight = ClampWeight(w, 20);
+        const auto& v = j["entry_section_entropy"];
+        if (!v.is_object())
+        {
+            *err = "entry_section_entropy must be {min}";
+            return false;
+        }
+        out->f0 = 0.0;
+        if (!JsNum(v, "min", &out->f0))
+        {
+            *err = "entry_section_entropy requires min";
+            return false;
+        }
+        if (out->f0 < 0.0 || out->f0 > 8.0)
+        {
+            *err = "entry_section_entropy min must be 0..8";
+            return false;
+        }
+        return true;
+    }
 
     *err = "unsupported condition type";
     return false;

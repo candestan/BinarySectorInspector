@@ -53,6 +53,19 @@ static bool VecStrMatch(MatchMode mode, const std::vector<std::string>& v, const
     return false;
 }
 
+static int EntrySectionIndex(const DetectFacts& facts)
+{
+    if (!facts.entry_rva)
+        return -1;
+    for (int i = 0; i < (int)facts.sections.size(); i++)
+    {
+        const DetectSectionFact& s = facts.sections[i];
+        if (facts.entry_rva >= s.vaddr && facts.entry_rva < s.vaddr + s.vsize)
+            return i;
+    }
+    return -1;
+}
+
 static bool PatAt(const BytePat& pat, const uint8_t* b, size_t n, size_t off)
 {
     if (pat.bytes.empty() || off + pat.bytes.size() > n)
@@ -431,6 +444,108 @@ static bool EvalLeaf(const DetectFacts& facts, const Cond& c, std::vector<Detect
             return true;
         }
         return false;
+    }
+    case CondSectionRawSize:
+        for (const DetectSectionFact& s : facts.sections)
+        {
+            if (!c.a.empty() && !StrMatch(MatchExact, s.name, c.a.c_str()))
+                continue;
+            if ((int)s.rawsize >= c.i0 && (int)s.rawsize <= c.i1)
+            {
+                snprintf(det, sizeof(det), "%s raw %u", s.name[0] ? s.name : "(unnamed)", s.rawsize);
+                PushEv(ev, "section_raw_size", det, c.weight);
+                return true;
+            }
+        }
+        return false;
+    case CondOddSectionNames:
+    {
+        int n = 0;
+        for (const DetectSectionFact& s : facts.sections)
+        {
+            const char* name = s.name;
+            if (!name || name[0] != '.')
+                continue;
+            size_t len = strlen(name);
+            if (len < 2 || len > 4)
+                continue;
+            bool odd = false;
+            for (size_t i = 1; i < len; i++)
+            {
+                unsigned char ch = (unsigned char)name[i];
+                if (!isalnum(ch) && ch != '_')
+                {
+                    odd = true;
+                    break;
+                }
+            }
+            if (odd)
+                n++;
+        }
+        if (n >= c.i0)
+        {
+            snprintf(det, sizeof(det), "%d mutated short section names", n);
+            PushEv(ev, "odd_section_names", det, c.weight);
+            return true;
+        }
+        return false;
+    }
+    // Layout fact used by several protectors: original sections left mapped but empty
+    // before the on-disk entry stub. credit: https://github.com/notsnakesilent/VMPStatic/blob/main/main.go
+    case CondVirtualOnlyBeforeEntry:
+    {
+        int ep = EntrySectionIndex(facts);
+        if (ep < 1)
+            return false;
+        int packed = 0;
+        for (int i = 0; i < ep; i++)
+        {
+            const DetectSectionFact& s = facts.sections[(size_t)i];
+            if (s.rawsize == 0 && s.rawptr == 0 &&
+                (s.chars & IMAGE_SCN_CNT_UNINITIALIZED_DATA) == 0)
+                packed++;
+        }
+        if (packed < c.i0)
+            return false;
+        snprintf(det, sizeof(det), "%d virtual-only sections before entry", packed);
+        PushEv(ev, "virtual_only_before_entry", det, c.weight);
+        return true;
+    }
+    case CondEntrySectionChars:
+    {
+        int ep = EntrySectionIndex(facts);
+        if (ep < 0)
+            return false;
+        const DetectSectionFact& stub = facts.sections[(size_t)ep];
+        if ((stub.chars & (uint32_t)c.i0) != (uint32_t)c.i0)
+            return false;
+        snprintf(det, sizeof(det), "entry %s chars 0x%08X", stub.name[0] ? stub.name : "(unnamed)", stub.chars);
+        PushEv(ev, "entry_section_chars", det, c.weight);
+        return true;
+    }
+    case CondEntrySectionRawSize:
+    {
+        int ep = EntrySectionIndex(facts);
+        if (ep < 0)
+            return false;
+        const DetectSectionFact& stub = facts.sections[(size_t)ep];
+        if ((int)stub.rawsize < c.i0 || (int)stub.rawsize > c.i1)
+            return false;
+        snprintf(det, sizeof(det), "entry %s raw %u", stub.name[0] ? stub.name : "(unnamed)", stub.rawsize);
+        PushEv(ev, "entry_section_raw_size", det, c.weight);
+        return true;
+    }
+    case CondEntrySectionEntropy:
+    {
+        int ep = EntrySectionIndex(facts);
+        if (ep < 0)
+            return false;
+        const DetectSectionFact& stub = facts.sections[(size_t)ep];
+        if (stub.entropy < c.f0)
+            return false;
+        snprintf(det, sizeof(det), "entry %s entropy %.2f", stub.name[0] ? stub.name : "(unnamed)", stub.entropy);
+        PushEv(ev, "entry_section_entropy", det, c.weight);
+        return true;
     }
     default:
         return false;

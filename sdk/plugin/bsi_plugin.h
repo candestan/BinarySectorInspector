@@ -75,6 +75,14 @@ enum
     BsiDetectConfExact = 3
 };
 
+enum
+{
+    BsiToastSuccess = 0,
+    BsiToastInfo = 1,
+    BsiToastWarning = 2,
+    BsiToastError = 3
+};
+
 struct BsiPluginInfo
 {
     const char* id;          // stable reverse-dns, e.g. com.example.myplugin
@@ -222,6 +230,7 @@ struct BsiHost
     int  (*rva_to_off)(void* ctx, uint32_t rva, uint32_t* file_off);
     int  (*off_to_rva)(void* ctx, uint32_t file_off, uint32_t* rva);
     int  (*hex_cursor)(void* ctx, uint32_t* file_off, uint32_t* size);
+    void (*toast)(void* ctx, int type, const char* title, const char* body);
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.

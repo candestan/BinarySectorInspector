@@ -1,10 +1,15 @@
 #include "ui/widgets.h"
 #include "ui/theme.h"
 #include "persist/settings.h"
+#include "i18n/i18n.h"
+#include "ui/icons.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <math.h>
 #include <float.h>
+#include <string.h>
+#include <stdio.h>
 
 bool UiAnimEnabled()
 {
@@ -263,12 +268,254 @@ void UiTipWhenDisabled(const char* text)
     UiTooltip(text);
 }
 
+void UiBadge(const char* id, const char* label, ImU32 col, const char* tip)
+{
+    if (!label || !label[0])
+        return;
+    ImGui::PushID(id ? id : "badge");
+    ImFont* sm = ThemeFontSmall();
+    if (sm)
+        ImGui::PushFont(sm);
+    ImVec2 ts = ImGui::CalcTextSize(label);
+    float pad_x = ThemePx(6.f);
+    float pad_y = ThemePx(1.5f);
+    ImVec2 sz(ts.x + pad_x * 2.f, ts.y + pad_y * 2.f);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("badge", sz);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImU32 bg = ThemeWithAlpha(col, 0.16f);
+    float r = ThemePx(3.f);
+    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, r);
+    dl->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y), col, r, 0, 1.f);
+    dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), col, label);
+    if (tip && tip[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(tip);
+    if (sm)
+        ImGui::PopFont();
+    ImGui::PopID();
+}
+
+bool UiCopyButton(const char* id, const char* text)
+{
+    ImGui::PushID(id ? id : "copy");
+    float h = ImGui::GetFrameHeight();
+    if (h < ThemePx(28.f))
+        h = ThemePx(28.f);
+    float w = h;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    bool disabled = !text || !text[0];
+    if (disabled)
+        ImGui::BeginDisabled();
+    bool hit = ImGui::InvisibleButton("cpy", ImVec2(w, h));
+    ImVec2 q = ImGui::GetItemRectMax();
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    float ht = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        ht = 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImU32 fill = UiLerpCol(ThemeColCard(), ThemeColHover(), ht);
+    if (active)
+        fill = UiLerpCol(fill, ThemeColAccent(), 0.16f);
+    dl->AddRectFilled(p, q, fill);
+    UiHandIfHovered();
+    ImU32 col = UiLerpCol(ThemeColFg(), ThemeColAccent(), ht);
+    float s = IconSize(IconRoleMd);
+    IconDraw(IconCopy, ImVec2(p.x + w * 0.5f, p.y + h * 0.5f), s, col, dl);
+    if (disabled)
+        ImGui::EndDisabled();
+    else if (hit)
+    {
+        ImGui::SetClipboardText(text);
+        UiToastPush(UiToastSuccess, I18nGet("toast.copy.title"), nullptr);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(I18nGet("ui.copy"));
+    ImGui::PopID();
+    return hit && !disabled;
+}
+
+void UiFieldText(const char* id, char* buf, int buf_cap, float width)
+{
+    if (!id || !buf || buf_cap < 2)
+        return;
+    ImGui::PushID(id);
+    ImGui::AlignTextToFramePadding();
+    ImGui::SetNextItemWidth(width);
+    ImVec4 frame = ImGui::ColorConvertU32ToFloat4(ThemeColCardA(0.45f));
+    ImVec4 border = ImGui::ColorConvertU32ToFloat4(ThemeColBorderA(0.35f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, frame);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, frame);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, frame);
+    ImGui::PushStyleColor(ImGuiCol_Border, border);
+    ImGui::InputText("##field", buf, (size_t)buf_cap, ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopStyleColor(4);
+    ImGui::PopID();
+}
+
+enum { kPersistStackMax = 4 };
+
+struct PersistTableFrame
+{
+    char  id[48];
+    char  col[UiTableColMax][48];
+    float def_w[UiTableColMax];
+    int   n;
+};
+
+static PersistTableFrame g_persist_stack[kPersistStackMax];
+static int g_persist_n;
+
+struct PersistApply
+{
+    char id[48];
+    int  epoch;
+};
+
+static PersistApply g_persist_applied[32];
+
+static int PersistAppliedEpoch(const char* id)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        if (g_persist_applied[i].id[0] && strcmp(g_persist_applied[i].id, id) == 0)
+            return g_persist_applied[i].epoch;
+    }
+    return -1;
+}
+
+static void PersistMarkApplied(const char* id, int epoch)
+{
+    int slot = -1;
+    for (int i = 0; i < 32; i++)
+    {
+        if (g_persist_applied[i].id[0] && strcmp(g_persist_applied[i].id, id) == 0)
+        {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && !g_persist_applied[i].id[0])
+            slot = i;
+    }
+    if (slot < 0)
+        slot = 0;
+    snprintf(g_persist_applied[slot].id, sizeof(g_persist_applied[slot].id), "%s", id);
+    g_persist_applied[slot].epoch = epoch;
+}
+
+bool UiBeginPersistTable(const char* table_id, const UiTableColDef* cols, int n,
+    ImGuiTableFlags flags, ImVec2 outer_size)
+{
+    if (!table_id || !table_id[0] || !cols || n < 1)
+        return false;
+    if (n > UiTableColMax)
+        n = UiTableColMax;
+    flags |= ImGuiTableFlags_NoSavedSettings;
+    if (!ImGui::BeginTable(table_id, n, flags, outer_size))
+        return false;
+    if (g_persist_n >= kPersistStackMax)
+    {
+        ImGui::EndTable();
+        return false;
+    }
+    PersistTableFrame& f = g_persist_stack[g_persist_n++];
+    snprintf(f.id, sizeof(f.id), "%s", table_id);
+    f.n = n;
+    float dpi = ThemeDpi();
+    if (dpi < 0.5f)
+        dpi = 1.f;
+    for (int i = 0; i < n; i++)
+    {
+        snprintf(f.col[i], sizeof(f.col[i]), "%s", cols[i].id ? cols[i].id : "col");
+        f.def_w[i] = cols[i].def_w;
+        ImGuiTableColumnFlags cf = cols[i].flags;
+        float init = 0.f;
+        bool skip_saved = (cf & ImGuiTableColumnFlags_WidthFixed) != 0 && cols[i].def_w <= 0.f;
+        if (skip_saved)
+            init = 0.f;
+        else if (SettingsLayoutHasCol(table_id, f.col[i]))
+        {
+            init = SettingsLayoutColW(table_id, f.col[i], cols[i].def_w) * dpi;
+            cf = (cf & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;
+        }
+        else if (cols[i].def_w > 0.f)
+            init = ThemePx(cols[i].def_w);
+        ImGui::TableSetupColumn(cols[i].label ? cols[i].label : f.col[i], cf, init);
+    }
+    int epoch = SettingsLayoutEpoch();
+    if (PersistAppliedEpoch(table_id) != epoch)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            float px = 0.f;
+            bool skip_saved = (cols[i].flags & ImGuiTableColumnFlags_WidthFixed) != 0 && f.def_w[i] <= 0.f;
+            if (skip_saved)
+                px = 0.f;
+            else if (SettingsLayoutHasCol(table_id, f.col[i]))
+                px = SettingsLayoutColW(table_id, f.col[i], f.def_w[i]) * dpi;
+            else if (f.def_w[i] > 0.f)
+                px = ThemePx(f.def_w[i]);
+            if (px > 0.f)
+                ImGui::TableSetColumnWidth(i, px);
+        }
+        PersistMarkApplied(table_id, epoch);
+    }
+    return true;
+}
+
+void UiEndPersistTable()
+{
+    if (g_persist_n <= 0)
+    {
+        ImGui::EndTable();
+        return;
+    }
+    PersistTableFrame f = g_persist_stack[--g_persist_n];
+    ImGuiTable* t = ImGui::GetCurrentTable();
+    if (t && t->ResizedColumn != -1)
+    {
+        float dpi = ThemeDpi();
+        if (dpi < 0.5f)
+            dpi = 1.f;
+        int nc = t->ColumnsCount;
+        if (nc > f.n)
+            nc = f.n;
+        for (int i = 0; i < nc; i++)
+        {
+            float w = t->Columns[i].WidthGiven;
+            if (w < 8.f)
+                continue;
+            SettingsLayoutSetColW(f.id, f.col[i], w / dpi);
+        }
+    }
+    ImGui::EndTable();
+}
+
+float UiPersistSplitW(const char* id, float* sz, float def_frac, float min_a, float min_b)
+{
+    (void)id;
+    float avail = ImGui::GetContentRegionAvail().x;
+    if (!sz)
+        return avail * (def_frac > 0.f ? def_frac : 0.36f);
+    if (*sz < 1.f)
+        *sz = avail * (def_frac > 0.f ? def_frac : 0.36f);
+    if (*sz < min_a)
+        *sz = min_a;
+    if (*sz + min_b > avail)
+        *sz = avail - min_b;
+    if (*sz < min_a)
+        *sz = min_a;
+    if (*sz < ThemePx(48.f))
+        *sz = ThemePx(48.f);
+    return *sz;
+}
+
 void UiPushPopupMetrics()
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemePopupPad(), ThemePopupPad()));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemeMenuPadY()));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(10.f), ThemeMenuPadY()));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(ThemeMenuPadX(), ThemePx(6.f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuItemPadX(), ThemeMenuItemPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(8.f), ThemeMenuItemPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(ThemePx(8.f), ThemePx(4.f)));
 }
 
 void UiPopPopupMetrics()
@@ -409,4 +656,201 @@ void UiPopupFadePush()
 void UiPopupFadePop()
 {
     ImGui::PopStyleVar();
+}
+
+static const int kToastMax = 5;
+static const float kToastDur[4] = { 3.2f, 4.0f, 5.0f, 6.5f };
+
+struct UiToastSlot
+{
+    bool     active;
+    UiToastType type;
+    char     title[96];
+    char     body[192];
+    double   born;
+    float    close_t;
+    bool     closing;
+    unsigned dedup;
+};
+
+static UiToastSlot g_toasts[kToastMax];
+
+static unsigned ToastDedupHash(UiToastType type, const char* title, const char* body)
+{
+    unsigned h = (unsigned)type * 1315423911u;
+    if (title)
+        for (const char* p = title; *p; p++)
+            h = h * 33u + (unsigned char)*p;
+    if (body)
+        for (const char* p = body; *p; p++)
+            h = h * 33u + (unsigned char)*p;
+    return h;
+}
+
+static ImU32 ToastAccentCol(UiToastType type)
+{
+    switch (type)
+    {
+    case UiToastSuccess: return ThemeColSuccess();
+    case UiToastInfo:    return ThemeColInfo();
+    case UiToastWarning: return ThemeColWarning();
+    case UiToastError:   return ThemeColDanger();
+    default:             return ThemeColAccent();
+    }
+}
+
+void UiToastPush(UiToastType type, const char* title, const char* body)
+{
+    if (!title || !title[0])
+        return;
+    unsigned dedup = ToastDedupHash(type, title, body);
+    double now = ImGui::GetCurrentContext() ? ImGui::GetTime() : 0.0;
+    for (int i = 0; i < kToastMax; i++)
+    {
+        if (g_toasts[i].active && g_toasts[i].dedup == dedup)
+        {
+            g_toasts[i].born = now;
+            g_toasts[i].closing = false;
+            g_toasts[i].close_t = 0.f;
+            return;
+        }
+    }
+    int slot = -1;
+    for (int i = 0; i < kToastMax; i++)
+    {
+        if (!g_toasts[i].active)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        slot = 0;
+        for (int i = 1; i < kToastMax; i++)
+            if (g_toasts[i].born < g_toasts[slot].born)
+                slot = i;
+    }
+    UiToastSlot& t = g_toasts[slot];
+    t.active = true;
+    t.type = type;
+    snprintf(t.title, sizeof(t.title), "%s", title);
+    if (body && body[0])
+        snprintf(t.body, sizeof(t.body), "%s", body);
+    else
+        t.body[0] = 0;
+    t.born = now;
+    t.close_t = 0.f;
+    t.closing = false;
+    t.dedup = dedup;
+}
+
+static float ToastLife(const UiToastSlot& t)
+{
+    if ((int)t.type >= 0 && (int)t.type < 4)
+        return kToastDur[(int)t.type];
+    return 4.f;
+}
+
+void UiToastDraw()
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    if (!vp)
+        return;
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    float dt = ImGui::GetIO().DeltaTime;
+    double now = ImGui::GetTime();
+    float margin = ThemeSpaceMd();
+    float tw = ThemeToastWidth();
+    float gap = ThemeToastGap();
+    float accent_w = ThemeToastAccentW();
+    float pad = ThemePopupPad();
+    float y = vp->WorkPos.y + margin;
+
+    int visible = 0;
+    for (int i = 0; i < kToastMax; i++)
+        if (g_toasts[i].active)
+            visible++;
+
+    float stack_y = y;
+    for (int pass = 0; pass < 2; pass++)
+    {
+        for (int i = 0; i < kToastMax; i++)
+        {
+            UiToastSlot& t = g_toasts[i];
+            if (!t.active)
+                continue;
+            float life = ToastLife(t);
+            float age = (float)(now - t.born);
+            if (!t.closing && age > life)
+                t.closing = true;
+            if (t.closing)
+            {
+                t.close_t += dt * (UiAnimEnabled() ? 3.5f : 8.f);
+                if (t.close_t >= 1.f)
+                {
+                    t.active = false;
+                    continue;
+                }
+            }
+            if (pass == 0)
+                continue;
+
+            ImFont* font = ImGui::GetFont();
+            float fs = ImGui::GetFontSize();
+            ImVec2 title_sz = font->CalcTextSizeA(fs, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.title);
+            float body_h = 0.f;
+            if (t.body[0])
+            {
+                ImVec2 body_sz = font->CalcTextSizeA(fs * 0.92f, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.body);
+                body_h = body_sz.y + ThemePx(4.f);
+            }
+            float close_sz = ThemePx(18.f);
+            float h = pad * 2.f + title_sz.y + body_h;
+            if (h < close_sz + pad)
+                h = close_sz + pad;
+            float x = vp->WorkPos.x + vp->WorkSize.x - margin - tw;
+            float slide = 0.f;
+            float alpha = 1.f;
+            if (UiAnimEnabled())
+            {
+                if (!t.closing && age < 0.22f)
+                    slide = (1.f - UiEaseOut(age / 0.22f)) * ThemePx(18.f);
+                if (t.closing)
+                    alpha = 1.f - UiEaseOut(t.close_t);
+            }
+            else if (t.closing)
+                alpha = 1.f - t.close_t;
+            x += slide;
+            ImVec2 a(x, stack_y);
+            ImVec2 b(x + tw, stack_y + h);
+            ImU32 bg = ThemeWithAlpha(ThemeColCard(), 0.96f * alpha);
+            ImU32 border = ThemeWithAlpha(ThemeColBorder(), 0.85f * alpha);
+            dl->AddRectFilled(a, b, bg, ThemePx(2.f));
+            dl->AddRect(a, b, border, ThemePx(2.f));
+            dl->AddRectFilled(a, ImVec2(a.x + accent_w, b.y), ThemeWithAlpha(ToastAccentCol(t.type), alpha));
+            float tx = a.x + accent_w + pad;
+            float ty = a.y + pad;
+            dl->AddText(font, fs, ImVec2(tx, ty), ThemeWithAlpha(ThemeColFg(), alpha), t.title);
+            if (t.body[0])
+            {
+                ty += title_sz.y + ThemePx(2.f);
+                dl->AddText(font, fs * 0.92f, ImVec2(tx, ty), ThemeWithAlpha(ThemeColMuted(), alpha), t.body);
+            }
+            ImVec2 close_min(b.x - pad - close_sz, a.y + pad * 0.5f);
+            ImVec2 close_max(close_min.x + close_sz, close_min.y + close_sz);
+            bool close_hov = ImGui::IsMouseHoveringRect(close_min, close_max);
+            if (close_hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                t.closing = true;
+            const char* xlabel = "x";
+            ImVec2 xs = font->CalcTextSizeA(fs * 0.85f, FLT_MAX, 0.f, xlabel);
+            ImVec2 cx((close_min.x + close_max.x) * 0.5f, (close_min.y + close_max.y) * 0.5f);
+            dl->AddText(font, fs * 0.85f,
+                ImVec2(cx.x - xs.x * 0.5f, cx.y - xs.y * 0.5f),
+                ThemeWithAlpha(close_hov ? ThemeColFg() : ThemeColMuted(), alpha), xlabel);
+            stack_y += h + gap;
+        }
+    }
 }

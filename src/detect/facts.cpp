@@ -360,6 +360,7 @@ void DetectFillFacts(const PeFile* pe, const uint8_t* bytes, size_t n, DetectFac
         memcpy(s.name, pe->sections[i].name, 9);
         s.chars = pe->sections[i].chars;
         s.vsize = pe->sections[i].vsize;
+        s.vaddr = pe->sections[i].vaddr;
         s.rawsize = pe->sections[i].rawsize;
         s.rawptr = pe->sections[i].rawptr;
         s.entropy = 0.0;
