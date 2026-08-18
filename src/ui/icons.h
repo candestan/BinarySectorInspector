@@ -27,6 +27,9 @@ enum
     IconEdit,
     IconReplace,
     IconCopy,
+    IconCheck,
+    IconInfo,
+    IconWarn,
 };
 
 enum

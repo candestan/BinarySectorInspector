@@ -268,30 +268,110 @@ void UiTipWhenDisabled(const char* text)
     UiTooltip(text);
 }
 
-void UiBadge(const char* id, const char* label, ImU32 col, const char* tip)
+struct BadgeGeom
+{
+    ImVec2 ts;
+    ImVec2 sz;
+    float  pad_x;
+    float  pad_y;
+    float  icon_slot;
+};
+
+static BadgeGeom BadgeCalc(const char* label, float min_w, int icon)
+{
+    BadgeGeom g;
+    g.pad_x = ThemeBadgePadX();
+    g.pad_y = ThemeBadgePadY();
+    g.icon_slot = 0.f;
+    if (icon >= 0)
+        g.icon_slot = IconSize(IconRoleXs) * 2.f + ThemeBadgeIconGap();
+    ImFont* font = ImGui::GetFont();
+    float fs = ImGui::GetFontSize();
+    if (label && label[0] && font)
+        g.ts = font->CalcTextSizeA(fs, FLT_MAX, 0.f, label);
+    else
+        g.ts = ImVec2(0.f, fs);
+    float w = g.ts.x + g.pad_x * 2.f + g.icon_slot;
+    float h = g.ts.y + g.pad_y * 2.f;
+    float min_h = ThemeBadgeMinH();
+    if (h < min_h)
+        h = min_h;
+    if (min_w > 0.f && w < min_w)
+        w = min_w;
+    g.sz = ImVec2(ceilf(w), ceilf(h));
+    return g;
+}
+
+float UiBadgeWidth(const char* label, float min_w, int icon)
+{
+    return BadgeCalc(label, min_w, icon).sz.x;
+}
+
+float UiBadgeHeight()
+{
+    return BadgeCalc("", 0.f, -1).sz.y;
+}
+
+static void BadgeAlignInline(float h)
+{
+    ImGuiWindow* w = ImGui::GetCurrentWindow();
+    if (!w || w->SkipItems || !w->DC.IsSameLine)
+        return;
+    float prev_h = w->DC.PrevLineSize.y;
+    if (prev_h <= 1.f || h >= prev_h)
+        return;
+    w->DC.CursorPos.y += floorf((prev_h - h) * 0.5f);
+}
+
+void UiBadge(const char* id, const char* label, ImU32 col, const char* tip, float min_w, int icon)
 {
     if (!label || !label[0])
         return;
+    BadgeGeom g = BadgeCalc(label, min_w, icon);
+    float avail = ImGui::GetContentRegionAvail().x;
+    bool clipped = false;
+    if (avail > ThemePx(24.f) && g.sz.x > avail)
+    {
+        g.sz.x = floorf(avail);
+        clipped = true;
+    }
+    BadgeAlignInline(g.sz.y);
     ImGui::PushID(id ? id : "badge");
-    ImFont* sm = ThemeFontSmall();
-    if (sm)
-        ImGui::PushFont(sm);
-    ImVec2 ts = ImGui::CalcTextSize(label);
-    float pad_x = ThemePx(6.f);
-    float pad_y = ThemePx(1.5f);
-    ImVec2 sz(ts.x + pad_x * 2.f, ts.y + pad_y * 2.f);
     ImVec2 p = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("badge", sz);
+    ImGui::Dummy(g.sz);
+    ImVec2 q = ImVec2(p.x + g.sz.x, p.y + g.sz.y);
+    float alpha = ImGui::GetStyle().Alpha;
+    if (alpha < 0.f)
+        alpha = 0.f;
+    if (alpha > 1.f)
+        alpha = 1.f;
+    ImU32 bg = ThemeWithAlpha(col, 0.14f * alpha);
+    ImU32 border = ThemeWithAlpha(col, 0.50f * alpha);
+    ImU32 fg = ThemeWithAlpha(col, alpha);
+    float r = ThemeBadgeRadius(g.sz.y);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImU32 bg = ThemeWithAlpha(col, 0.16f);
-    float r = ThemePx(3.f);
-    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, r);
-    dl->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y), col, r, 0, 1.f);
-    dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), col, label);
-    if (tip && tip[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-        UiTooltip(tip);
-    if (sm)
-        ImGui::PopFont();
+    dl->AddRectFilled(p, q, bg, r);
+    dl->AddRect(p, q, border, r, 0, ThemeBadgeBorderW());
+    dl->PushClipRect(p, q, true);
+    float ix = p.x + g.pad_x;
+    if (icon >= 0)
+    {
+        float is = IconSize(IconRoleXs);
+        IconDraw(icon, ImVec2(ix + is, p.y + g.sz.y * 0.5f), is, fg, dl);
+        ix += g.icon_slot;
+    }
+    float inner_w = q.x - g.pad_x - ix;
+    float tx = ix;
+    if (inner_w > g.ts.x)
+        tx += floorf((inner_w - g.ts.x) * 0.5f);
+    float ty = p.y + floorf((g.sz.y - g.ts.y) * 0.5f + 0.5f) + ThemePx(0.75f);
+    dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(tx, ty), fg, label);
+    dl->PopClipRect();
+    const char* hover_tip = tip;
+    if ((!hover_tip || !hover_tip[0]) && clipped)
+        hover_tip = label;
+    if (hover_tip && hover_tip[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(hover_tip);
     ImGui::PopID();
 }
 
@@ -439,19 +519,27 @@ bool UiBeginPersistTable(const char* table_id, const UiTableColDef* cols, int n,
             cf = (cf & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;
         }
         else if (cols[i].def_w > 0.f)
+        {
             init = ThemePx(cols[i].def_w);
+            if ((cf & ImGuiTableColumnFlags_WidthMask_) == 0)
+                cf |= ImGuiTableColumnFlags_WidthFixed;
+        }
         ImGui::TableSetupColumn(cols[i].label ? cols[i].label : f.col[i], cf, init);
     }
     int epoch = SettingsLayoutEpoch();
-    if (PersistAppliedEpoch(table_id) != epoch)
+    ImGuiTable* cur = ImGui::GetCurrentTable();
+    if (cur && cur->MinColumnWidth > 0.f && PersistAppliedEpoch(table_id) != epoch)
     {
         for (int i = 0; i < n; i++)
         {
-            float px = 0.f;
             bool skip_saved = (cols[i].flags & ImGuiTableColumnFlags_WidthFixed) != 0 && f.def_w[i] <= 0.f;
             if (skip_saved)
-                px = 0.f;
-            else if (SettingsLayoutHasCol(table_id, f.col[i]))
+                continue;
+            ImGuiTableColumnFlags cf = cur->Columns[i].Flags;
+            if ((cf & ImGuiTableColumnFlags_WidthFixed) == 0)
+                continue;
+            float px = 0.f;
+            if (SettingsLayoutHasCol(table_id, f.col[i]))
                 px = SettingsLayoutColW(table_id, f.col[i], f.def_w[i]) * dpi;
             else if (f.def_w[i] > 0.f)
                 px = ThemePx(f.def_w[i]);
@@ -752,6 +840,18 @@ static float ToastLife(const UiToastSlot& t)
     return 4.f;
 }
 
+static int ToastIcon(UiToastType type)
+{
+    switch (type)
+    {
+    case UiToastSuccess: return IconCheck;
+    case UiToastInfo:    return IconInfo;
+    case UiToastWarning: return IconWarn;
+    case UiToastError:   return IconClose;
+    default:             return IconInfo;
+    }
+}
+
 void UiToastDraw()
 {
     if (!ImGui::GetCurrentContext())
@@ -767,12 +867,7 @@ void UiToastDraw()
     float gap = ThemeToastGap();
     float accent_w = ThemeToastAccentW();
     float pad = ThemePopupPad();
-    float y = vp->WorkPos.y + margin;
-
-    int visible = 0;
-    for (int i = 0; i < kToastMax; i++)
-        if (g_toasts[i].active)
-            visible++;
+    float y = vp->Pos.y + ThemeTitleBarH() + ThemeSpaceSm();
 
     float stack_y = y;
     for (int pass = 0; pass < 2; pass++)
@@ -800,15 +895,21 @@ void UiToastDraw()
 
             ImFont* font = ImGui::GetFont();
             float fs = ImGui::GetFontSize();
-            ImVec2 title_sz = font->CalcTextSizeA(fs, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.title);
+            float icon_slot = ThemePx(22.f);
+            float text_w = tw - pad * 2.f - accent_w - icon_slot - ThemeSpaceSm() - ThemePx(22.f);
+            if (text_w < ThemePx(80.f))
+                text_w = ThemePx(80.f);
+            ImVec2 title_sz = font->CalcTextSizeA(fs, text_w, text_w, t.title);
             float body_h = 0.f;
             if (t.body[0])
             {
-                ImVec2 body_sz = font->CalcTextSizeA(fs * 0.92f, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.body);
+                ImVec2 body_sz = font->CalcTextSizeA(fs * 0.92f, text_w, text_w, t.body);
                 body_h = body_sz.y + ThemePx(4.f);
             }
             float close_sz = ThemePx(18.f);
             float h = pad * 2.f + title_sz.y + body_h;
+            if (h < icon_slot + pad * 2.f)
+                h = icon_slot + pad * 2.f;
             if (h < close_sz + pad)
                 h = close_sz + pad;
             float x = vp->WorkPos.x + vp->WorkSize.x - margin - tw;
@@ -826,30 +927,32 @@ void UiToastDraw()
             x += slide;
             ImVec2 a(x, stack_y);
             ImVec2 b(x + tw, stack_y + h);
+            ImU32 acc = ToastAccentCol(t.type);
             ImU32 bg = ThemeWithAlpha(ThemeColCard(), 0.96f * alpha);
             ImU32 border = ThemeWithAlpha(ThemeColBorder(), 0.85f * alpha);
             dl->AddRectFilled(a, b, bg, ThemePx(2.f));
             dl->AddRect(a, b, border, ThemePx(2.f));
-            dl->AddRectFilled(a, ImVec2(a.x + accent_w, b.y), ThemeWithAlpha(ToastAccentCol(t.type), alpha));
-            float tx = a.x + accent_w + pad;
+            dl->AddRectFilled(a, ImVec2(a.x + accent_w, b.y), ThemeWithAlpha(acc, alpha));
+            float icon_x = a.x + accent_w + pad + icon_slot * 0.5f;
+            float icon_y = a.y + h * 0.5f;
+            dl->AddCircleFilled(ImVec2(icon_x, icon_y), icon_slot * 0.48f, ThemeWithAlpha(acc, 0.20f * alpha));
+            IconDraw(ToastIcon(t.type), ImVec2(icon_x, icon_y), IconSize(IconRoleMd),
+                ThemeWithAlpha(acc, alpha), dl);
+            float tx = a.x + accent_w + pad + icon_slot + ThemeSpaceXs();
             float ty = a.y + pad;
-            dl->AddText(font, fs, ImVec2(tx, ty), ThemeWithAlpha(ThemeColFg(), alpha), t.title);
+            dl->AddText(font, fs, ImVec2(tx, ty), ThemeWithAlpha(ThemeColFg(), alpha), t.title, nullptr, text_w);
             if (t.body[0])
             {
                 ty += title_sz.y + ThemePx(2.f);
-                dl->AddText(font, fs * 0.92f, ImVec2(tx, ty), ThemeWithAlpha(ThemeColMuted(), alpha), t.body);
+                dl->AddText(font, fs * 0.92f, ImVec2(tx, ty), ThemeWithAlpha(ThemeColMuted(), alpha), t.body, nullptr, text_w);
             }
             ImVec2 close_min(b.x - pad - close_sz, a.y + pad * 0.5f);
             ImVec2 close_max(close_min.x + close_sz, close_min.y + close_sz);
             bool close_hov = ImGui::IsMouseHoveringRect(close_min, close_max);
             if (close_hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                 t.closing = true;
-            const char* xlabel = "x";
-            ImVec2 xs = font->CalcTextSizeA(fs * 0.85f, FLT_MAX, 0.f, xlabel);
-            ImVec2 cx((close_min.x + close_max.x) * 0.5f, (close_min.y + close_max.y) * 0.5f);
-            dl->AddText(font, fs * 0.85f,
-                ImVec2(cx.x - xs.x * 0.5f, cx.y - xs.y * 0.5f),
-                ThemeWithAlpha(close_hov ? ThemeColFg() : ThemeColMuted(), alpha), xlabel);
+            IconDraw(IconClose, ImVec2((close_min.x + close_max.x) * 0.5f, (close_min.y + close_max.y) * 0.5f),
+                IconSize(IconRoleXs), ThemeWithAlpha(close_hov ? ThemeColFg() : ThemeColMuted(), alpha), dl);
             stack_y += h + gap;
         }
     }

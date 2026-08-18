@@ -83,6 +83,9 @@ static float GlyphOptical(int icon)
     case IconGo:      return 1.06f;
     case IconReplace: return 1.06f;
     case IconCopy:    return 1.02f;
+    case IconCheck:   return 1.04f;
+    case IconInfo:    return 1.00f;
+    case IconWarn:    return 1.06f;
     case IconPlay:    return 1.04f;
     case IconTree:    return 1.04f;
     case IconGear:    return 0.92f;
@@ -132,6 +135,9 @@ static const char* IconEmojiGlyph(int icon)
     case IconEdit:     return "\xE2\x9C\x8F";       // ✏
     case IconReplace:  return "\xF0\x9F\x94\x84";   // 🔄
     case IconCopy:     return "\xF0\x9F\x93\x8B";   // 📋
+    case IconCheck:    return "\xE2\x9C\x85";       // ✅
+    case IconInfo:     return "\xE2\x84\xB9";       // ℹ
+    case IconWarn:     return "\xE2\x9A\xA0";       // ⚠
     default:           return nullptr;
     }
 }
@@ -299,6 +305,20 @@ void IconDraw(int icon, ImVec2 c, float s, unsigned int col, ImDrawList* dl)
     case IconCopy:
         dl->AddRect(ImVec2(x0 + s * 0.20f, y0 + s * 0.24f), ImVec2(x1 - s * 0.08f, y1 - s * 0.08f), col, 0.f, 0, sw);
         dl->AddRect(ImVec2(x0 + s * 0.08f, y0 + s * 0.12f), ImVec2(x1 - s * 0.20f, y1 - s * 0.20f), col, 0.f, 0, sw);
+        break;
+    case IconCheck:
+        dl->AddLine(ImVec2(x0 + s * 0.12f, c.y), ImVec2(c.x - s * 0.08f, y1 - s * 0.22f), col, sw);
+        dl->AddLine(ImVec2(c.x - s * 0.08f, y1 - s * 0.22f), ImVec2(x1 - s * 0.10f, y0 + s * 0.18f), col, sw);
+        break;
+    case IconInfo:
+        dl->AddCircle(c, s * 0.86f, col, 16, sw);
+        dl->AddCircleFilled(ImVec2(c.x, c.y - s * 0.38f), s * 0.12f, col);
+        dl->AddLine(ImVec2(c.x, c.y - s * 0.08f), ImVec2(c.x, c.y + s * 0.48f), col, sw);
+        break;
+    case IconWarn:
+        dl->AddTriangle(ImVec2(c.x, y0 + s * 0.02f), ImVec2(x0 + s * 0.06f, y1 - s * 0.08f), ImVec2(x1 - s * 0.06f, y1 - s * 0.08f), col, sw);
+        dl->AddLine(ImVec2(c.x, y0 + s * 0.42f), ImVec2(c.x, c.y + s * 0.16f), col, sw);
+        dl->AddCircleFilled(ImVec2(c.x, y1 - s * 0.24f), s * 0.10f, col);
         break;
     }
 }

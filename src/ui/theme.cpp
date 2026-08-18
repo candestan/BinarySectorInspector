@@ -70,6 +70,35 @@ float ThemeTooltipPad() { return ThemePx(10.f); }
 float ThemeToastWidth() { return ThemePx(340.f); }
 float ThemeToastGap() { return ThemePx(8.f); }
 float ThemeToastAccentW() { return ThemePx(3.f); }
+float ThemeBadgePadX() { return ThemePx(7.f); }
+float ThemeBadgePadY() { return ThemePx(3.f); }
+float ThemeBadgeGap() { return ThemePx(6.f); }
+float ThemeBadgeIconGap() { return ThemePx(4.f); }
+float ThemeBadgeBorderW()
+{
+    float w = ThemePx(1.f);
+    if (w < 1.f)
+        w = 1.f;
+    return w;
+}
+float ThemeBadgeMinH()
+{
+    float fs = ThemeFontSize();
+    if (ImGui::GetCurrentContext())
+        fs = ImGui::GetFontSize();
+    return fs + ThemeBadgePadY() * 2.f;
+}
+float ThemeBadgeRadius(float height)
+{
+    float r = height * 0.22f;
+    float lo = ThemePx(2.f);
+    float hi = ThemePx(4.f);
+    if (r < lo)
+        r = lo;
+    if (r > hi)
+        r = hi;
+    return r;
+}
 
 static void RefreshDpi()
 {

@@ -29,7 +29,9 @@ void  UiPopupFadePop();
 void  UiEmpty(const char* title, const char* detail = nullptr);
 void  UiSection(const char* title);
 void  UiTipWhenDisabled(const char* text);
-void  UiBadge(const char* id, const char* label, ImU32 col, const char* tip = nullptr);
+void  UiBadge(const char* id, const char* label, ImU32 col, const char* tip = nullptr, float min_w = 0.f, int icon = -1);
+float UiBadgeWidth(const char* label, float min_w = 0.f, int icon = -1);
+float UiBadgeHeight();
 bool  UiCopyButton(const char* id, const char* text);
 void  UiFieldText(const char* id, char* buf, int buf_cap, float width);
 

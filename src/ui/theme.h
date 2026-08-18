@@ -38,6 +38,13 @@ float  ThemeTooltipPad();
 float  ThemeToastWidth();
 float  ThemeToastGap();
 float  ThemeToastAccentW();
+float  ThemeBadgePadX();
+float  ThemeBadgePadY();
+float  ThemeBadgeGap();
+float  ThemeBadgeIconGap();
+float  ThemeBadgeBorderW();
+float  ThemeBadgeMinH();
+float  ThemeBadgeRadius(float height);
 
 void   ThemeLoadFonts();
 void   ThemeApply();
