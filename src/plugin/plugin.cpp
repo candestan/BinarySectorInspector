@@ -843,6 +843,18 @@ static int RecSectionAt(void*, int index,
     return 1;
 }
 
+static void RecToast(void*, int type, const char* title, const char* body)
+{
+    UiToastType t = UiToastInfo;
+    if (type == BsiToastSuccess)
+        t = UiToastSuccess;
+    else if (type == BsiToastWarning)
+        t = UiToastWarning;
+    else if (type == BsiToastError)
+        t = UiToastError;
+    UiToastPush(t, title, body);
+}
+
 static void UiLabel(void*, const char* text)
 {
     if (text)
@@ -1062,6 +1074,7 @@ static void FillHost(PluginRec* p)
     p->host.rsrc_at = RecRsrcAt;
     p->host.section_count = RecSectionCount;
     p->host.section_at = RecSectionAt;
+    p->host.toast = RecToast;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

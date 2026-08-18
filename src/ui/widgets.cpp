@@ -5,6 +5,8 @@
 
 #include <math.h>
 #include <float.h>
+#include <string.h>
+#include <stdio.h>
 
 bool UiAnimEnabled()
 {
@@ -266,9 +268,9 @@ void UiTipWhenDisabled(const char* text)
 void UiPushPopupMetrics()
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemePopupPad(), ThemePopupPad()));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemeMenuPadY()));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(10.f), ThemeMenuPadY()));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(ThemeMenuPadX(), ThemePx(6.f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuItemPadX(), ThemeMenuItemPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(8.f), ThemeMenuItemPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(ThemePx(8.f), ThemePx(4.f)));
 }
 
 void UiPopPopupMetrics()
@@ -409,4 +411,201 @@ void UiPopupFadePush()
 void UiPopupFadePop()
 {
     ImGui::PopStyleVar();
+}
+
+static const int kToastMax = 5;
+static const float kToastDur[4] = { 3.2f, 4.0f, 5.0f, 6.5f };
+
+struct UiToastSlot
+{
+    bool     active;
+    UiToastType type;
+    char     title[96];
+    char     body[192];
+    double   born;
+    float    close_t;
+    bool     closing;
+    unsigned dedup;
+};
+
+static UiToastSlot g_toasts[kToastMax];
+
+static unsigned ToastDedupHash(UiToastType type, const char* title, const char* body)
+{
+    unsigned h = (unsigned)type * 1315423911u;
+    if (title)
+        for (const char* p = title; *p; p++)
+            h = h * 33u + (unsigned char)*p;
+    if (body)
+        for (const char* p = body; *p; p++)
+            h = h * 33u + (unsigned char)*p;
+    return h;
+}
+
+static ImU32 ToastAccentCol(UiToastType type)
+{
+    switch (type)
+    {
+    case UiToastSuccess: return ThemeColSuccess();
+    case UiToastInfo:    return ThemeColInfo();
+    case UiToastWarning: return ThemeColWarning();
+    case UiToastError:   return ThemeColDanger();
+    default:             return ThemeColAccent();
+    }
+}
+
+void UiToastPush(UiToastType type, const char* title, const char* body)
+{
+    if (!title || !title[0])
+        return;
+    unsigned dedup = ToastDedupHash(type, title, body);
+    double now = ImGui::GetCurrentContext() ? ImGui::GetTime() : 0.0;
+    for (int i = 0; i < kToastMax; i++)
+    {
+        if (g_toasts[i].active && g_toasts[i].dedup == dedup)
+        {
+            g_toasts[i].born = now;
+            g_toasts[i].closing = false;
+            g_toasts[i].close_t = 0.f;
+            return;
+        }
+    }
+    int slot = -1;
+    for (int i = 0; i < kToastMax; i++)
+    {
+        if (!g_toasts[i].active)
+        {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+    {
+        slot = 0;
+        for (int i = 1; i < kToastMax; i++)
+            if (g_toasts[i].born < g_toasts[slot].born)
+                slot = i;
+    }
+    UiToastSlot& t = g_toasts[slot];
+    t.active = true;
+    t.type = type;
+    snprintf(t.title, sizeof(t.title), "%s", title);
+    if (body && body[0])
+        snprintf(t.body, sizeof(t.body), "%s", body);
+    else
+        t.body[0] = 0;
+    t.born = now;
+    t.close_t = 0.f;
+    t.closing = false;
+    t.dedup = dedup;
+}
+
+static float ToastLife(const UiToastSlot& t)
+{
+    if ((int)t.type >= 0 && (int)t.type < 4)
+        return kToastDur[(int)t.type];
+    return 4.f;
+}
+
+void UiToastDraw()
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    if (!vp)
+        return;
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    float dt = ImGui::GetIO().DeltaTime;
+    double now = ImGui::GetTime();
+    float margin = ThemeSpaceMd();
+    float tw = ThemeToastWidth();
+    float gap = ThemeToastGap();
+    float accent_w = ThemeToastAccentW();
+    float pad = ThemePopupPad();
+    float y = vp->WorkPos.y + margin;
+
+    int visible = 0;
+    for (int i = 0; i < kToastMax; i++)
+        if (g_toasts[i].active)
+            visible++;
+
+    float stack_y = y;
+    for (int pass = 0; pass < 2; pass++)
+    {
+        for (int i = 0; i < kToastMax; i++)
+        {
+            UiToastSlot& t = g_toasts[i];
+            if (!t.active)
+                continue;
+            float life = ToastLife(t);
+            float age = (float)(now - t.born);
+            if (!t.closing && age > life)
+                t.closing = true;
+            if (t.closing)
+            {
+                t.close_t += dt * (UiAnimEnabled() ? 3.5f : 8.f);
+                if (t.close_t >= 1.f)
+                {
+                    t.active = false;
+                    continue;
+                }
+            }
+            if (pass == 0)
+                continue;
+
+            ImFont* font = ImGui::GetFont();
+            float fs = ImGui::GetFontSize();
+            ImVec2 title_sz = font->CalcTextSizeA(fs, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.title);
+            float body_h = 0.f;
+            if (t.body[0])
+            {
+                ImVec2 body_sz = font->CalcTextSizeA(fs * 0.92f, tw - pad * 2.f - accent_w - ThemeSpaceSm(), 0.f, t.body);
+                body_h = body_sz.y + ThemePx(4.f);
+            }
+            float close_sz = ThemePx(18.f);
+            float h = pad * 2.f + title_sz.y + body_h;
+            if (h < close_sz + pad)
+                h = close_sz + pad;
+            float x = vp->WorkPos.x + vp->WorkSize.x - margin - tw;
+            float slide = 0.f;
+            float alpha = 1.f;
+            if (UiAnimEnabled())
+            {
+                if (!t.closing && age < 0.22f)
+                    slide = (1.f - UiEaseOut(age / 0.22f)) * ThemePx(18.f);
+                if (t.closing)
+                    alpha = 1.f - UiEaseOut(t.close_t);
+            }
+            else if (t.closing)
+                alpha = 1.f - t.close_t;
+            x += slide;
+            ImVec2 a(x, stack_y);
+            ImVec2 b(x + tw, stack_y + h);
+            ImU32 bg = ThemeWithAlpha(ThemeColCard(), 0.96f * alpha);
+            ImU32 border = ThemeWithAlpha(ThemeColBorder(), 0.85f * alpha);
+            dl->AddRectFilled(a, b, bg, ThemePx(2.f));
+            dl->AddRect(a, b, border, ThemePx(2.f));
+            dl->AddRectFilled(a, ImVec2(a.x + accent_w, b.y), ThemeWithAlpha(ToastAccentCol(t.type), alpha));
+            float tx = a.x + accent_w + pad;
+            float ty = a.y + pad;
+            dl->AddText(font, fs, ImVec2(tx, ty), ThemeWithAlpha(ThemeColFg(), alpha), t.title);
+            if (t.body[0])
+            {
+                ty += title_sz.y + ThemePx(2.f);
+                dl->AddText(font, fs * 0.92f, ImVec2(tx, ty), ThemeWithAlpha(ThemeColMuted(), alpha), t.body);
+            }
+            ImVec2 close_min(b.x - pad - close_sz, a.y + pad * 0.5f);
+            ImVec2 close_max(close_min.x + close_sz, close_min.y + close_sz);
+            bool close_hov = ImGui::IsMouseHoveringRect(close_min, close_max);
+            if (close_hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                t.closing = true;
+            const char* xlabel = "x";
+            ImVec2 xs = font->CalcTextSizeA(fs * 0.85f, FLT_MAX, 0.f, xlabel);
+            ImVec2 cx((close_min.x + close_max.x) * 0.5f, (close_min.y + close_max.y) * 0.5f);
+            dl->AddText(font, fs * 0.85f,
+                ImVec2(cx.x - xs.x * 0.5f, cx.y - xs.y * 0.5f),
+                ThemeWithAlpha(close_hov ? ThemeColFg() : ThemeColMuted(), alpha), xlabel);
+            stack_y += h + gap;
+        }
+    }
 }

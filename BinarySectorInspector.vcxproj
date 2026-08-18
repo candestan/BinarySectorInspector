@@ -46,7 +46,7 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <ResourceCompile>
@@ -72,7 +72,7 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
@@ -120,7 +120,10 @@
     <ClCompile Include="src\pe\patch.cpp" />
     <ClCompile Include="src\analyze\py2exe_analyzer.cpp" />
     <ClCompile Include="src\pe\findings.cpp" />
+    <ClCompile Include="src\findings\findings_engine.cpp" />
     <ClCompile Include="src\analyze\analyze.cpp" />
+    <ClCompile Include="src\analyze\analyze_engine.cpp" />
+    <ClCompile Include="src\analyze\profile.cpp" />
     <ClCompile Include="src\analyze\go_analyzer.cpp" />
     <ClCompile Include="src\analyze\autoit_analyzer.cpp" />
     <ClCompile Include="src\analyze\ahk_analyzer.cpp" />
@@ -128,9 +131,16 @@
     <ClCompile Include="src\plugin\plugin.cpp" />
     <ClCompile Include="src\runtime\scripting.cpp" />
     <ClCompile Include="src\detect\detect.cpp" />
+    <ClCompile Include="src\detect\kuara_adapter.cpp" />
     <ClCompile Include="src\detect\sig_load.cpp" />
     <ClCompile Include="src\detect\sig_match.cpp" />
     <ClCompile Include="src\detect\facts.cpp" />
+    <ClCompile Include="third_party\kuara_dynamic\src\engine.cpp">
+      <ObjectFileName>$(IntDir)kuara_engine.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="third_party\kuara_dynamic\src\matcher.cpp" />
+    <ClCompile Include="third_party\kuara_dynamic\src\rule_parser.cpp" />
+    <ClCompile Include="third_party\kuara_dynamic\src\rule_validator.cpp" />
     <ClCompile Include="src\platform\window_process.cpp" />
     <ClCompile Include="third_party\imgui\imgui.cpp" />
     <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
@@ -173,6 +183,7 @@
     <ClInclude Include="src\runtime\scripting.h" />
     <ClInclude Include="src\analyze\analyze.h" />
     <ClInclude Include="src\detect\detect.h" />
+    <ClInclude Include="src\detect\kuara_adapter.h" />
     <ClInclude Include="src\detect\detect_p.h" />
     <ClInclude Include="src\platform\window_process.h" />
     <ClInclude Include="src\app\resource.h" />
@@ -194,16 +205,18 @@
     <ThemeJson Include="themes\*.json" />
     <AssetFiles Include="assets\*" />
     <BuiltinSignatures Include="signatures\builtin\**\*.json" />
+    <AnalysisProfiles Include="analysis\profiles\**\*.json" />
     <SignatureDocs Include="signatures\README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Target Name="CopyLangAndThemes" AfterTargets="Build">
-    <MakeDir Directories="$(OutDir)languages;$(OutDir)themes;$(OutDir)assets;$(OutDir)signatures\builtin;$(OutDir)signatures\user;$(OutDir)signatures\packs;$(OutDir)plugins" />
+    <MakeDir Directories="$(OutDir)languages;$(OutDir)themes;$(OutDir)assets;$(OutDir)signatures\builtin;$(OutDir)signatures\user;$(OutDir)signatures\packs;$(OutDir)analysis\profiles;$(OutDir)plugins" />
     <Copy SourceFiles="@(LanguageJson)" DestinationFolder="$(OutDir)languages" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ThemeJson)" DestinationFolder="$(OutDir)themes" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(OutDir)assets" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BuiltinSignatures)" DestinationFiles="@(BuiltinSignatures->'$(OutDir)signatures\builtin\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(SignatureDocs)" DestinationFolder="$(OutDir)signatures" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(AnalysisProfiles)" DestinationFiles="@(AnalysisProfiles->'$(OutDir)analysis\profiles\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <ItemGroup>
       <DropInPlugins Include="$(ProjectDir)plugins\*\x64\$(Configuration)\*.dll" />
     </ItemGroup>

@@ -9,6 +9,7 @@
 
 #include "engine/engine.h"
 #include "persist/settings.h"
+#include "persist/paths.h"
 #include "log/log.h"
 #include "detect/detect.h"
 #include "plugin/plugin.h"
@@ -181,6 +182,184 @@ static void DrawGeneral()
         ImGui::PopFont();
 }
 
+static ID3D11ShaderResourceView* g_bsi_icon_srv;
+static int g_bsi_icon_w;
+static int g_bsi_icon_h;
+static bool g_bsi_icon_tried;
+
+static ID3D11ShaderResourceView* BsiIconTex()
+{
+    if (!g_bsi_icon_tried)
+    {
+        g_bsi_icon_tried = true;
+        char path[MAX_PATH];
+        PathsAssetFile(path, MAX_PATH, "app.ico");
+        TexLoadFile(path, &g_bsi_icon_srv, &g_bsi_icon_w, &g_bsi_icon_h);
+    }
+    return g_bsi_icon_srv;
+}
+
+static void DrawPurpleSkull(ImDrawList* dl, ImVec2 c, float scale)
+{
+    if (!dl || scale < 4.f)
+        return;
+    const ImU32 col = IM_COL32(168, 96, 240, 220);
+    const ImU32 dark = IM_COL32(72, 32, 120, 255);
+    dl->AddCircleFilled(c, scale, col, 28);
+    dl->AddRectFilled(ImVec2(c.x - scale * 0.58f, c.y + scale * 0.12f),
+        ImVec2(c.x + scale * 0.58f, c.y + scale * 0.92f), col);
+    dl->AddCircleFilled(ImVec2(c.x - scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
+    dl->AddCircleFilled(ImVec2(c.x + scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
+    dl->AddTriangleFilled(
+        ImVec2(c.x, c.y + scale * 0.08f),
+        ImVec2(c.x - scale * 0.12f, c.y + scale * 0.28f),
+        ImVec2(c.x + scale * 0.12f, c.y + scale * 0.28f), dark);
+    for (int i = -2; i <= 2; i++)
+    {
+        float x = c.x + (float)i * scale * 0.17f;
+        dl->AddLine(ImVec2(x, c.y + scale * 0.42f), ImVec2(x, c.y + scale * 0.78f), dark, 1.6f);
+    }
+}
+
+static void DrawKuaraPlaceholder(ImDrawList* dl, ImVec2 img0, ImVec2 img1)
+{
+    dl->AddRectFilledMultiColor(img0, img1,
+        IM_COL32(28, 36, 58, 255), IM_COL32(40, 28, 64, 255),
+        IM_COL32(52, 36, 88, 255), IM_COL32(24, 48, 72, 255));
+    ImFont* font = ThemeFontTitle() ? ThemeFontTitle() : ImGui::GetFont();
+    float fs = ImGui::GetFontSize() * 1.15f;
+    const char* label = "KUARA";
+    ImVec2 ts = font->CalcTextSizeA(fs, 1e9f, 0.f, label);
+    ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f);
+    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), IM_COL32(220, 220, 255, 255), label);
+}
+
+static void DrawEngineBrand(DetectEngineKind kind, ImDrawList* dl, ImVec2 img0, ImVec2 img1)
+{
+    if (kind == DetectEngineInternal)
+    {
+        ID3D11ShaderResourceView* icon = BsiIconTex();
+        if (icon)
+            dl->AddImage(ImTextureRef((void*)icon), img0, img1);
+        else
+        {
+            dl->AddRectFilled(img0, img1, ThemeColInput());
+            IconDrawRole(IconShield, ImVec2((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f),
+                IconRoleLg, ThemeColAccent());
+        }
+        ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.52f);
+        DrawPurpleSkull(dl, c, (img1.x - img0.x) * 0.22f);
+        return;
+    }
+    DrawKuaraPlaceholder(dl, img0, img1);
+}
+
+static void DrawEngineInfoRow(const char* label, const char* value)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SameLine(ThemePx(148.f));
+    ImGui::TextWrapped("%s", value && value[0] ? value : "-");
+}
+
+static bool DrawEngineOption(DetectEngineKind kind, DetectEngineKind active, float card_w, float card_h, float img_h)
+{
+    DetectEngineInfo info{};
+    DetectEngineFillInfo(kind, &info);
+    ImGui::PushID((int)kind);
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    bool hit = ImGui::InvisibleButton("engine_pick", ImVec2(card_w, card_h));
+    ImVec2 p1 = ImGui::GetItemRectMax();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const bool selected = active == kind;
+    dl->AddRectFilled(p0, p1, ThemeColCard());
+    dl->AddRect(p0, p1, selected ? ThemeColAccent() : ThemeColBorder(), 0.f, 0, selected ? 2.f : 1.f);
+    UiHandIfHovered();
+    UiHoverSweep(p0, p1, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || selected));
+
+    ImVec2 img0(p0.x + 10.f, p0.y + 10.f);
+    ImVec2 img1(p0.x + card_w - 10.f, p0.y + 10.f + img_h);
+    DrawEngineBrand(kind, dl, img0, img1);
+    dl->AddRect(img0, img1, selected ? ThemeColAccent() : ThemeColBorder(), 0.f, 0, 1.f);
+
+    float tx = p0.x + 12.f;
+    float ty = img1.y + 10.f;
+    dl->AddText(ImVec2(tx, ty), ThemeColFg(), I18nGet(info.name_key));
+    ty += ImGui::GetTextLineHeight() + 4.f;
+    dl->PushClipRect(ImVec2(tx, ty), ImVec2(p1.x - 12.f, p1.y - 10.f), true);
+    dl->AddText(nullptr, 0.f, ImVec2(tx, ty), ThemeColMuted(), I18nGet(info.desc_key), nullptr, card_w - 24.f);
+    dl->PopClipRect();
+
+    if (hit && !selected)
+    {
+        DetectSetEngine(kind);
+        DetectReapplyOpenFile();
+        UiToastPush(UiToastInfo, I18nGet("toast.engine.title"), I18nGet("toast.engine.body"));
+    }
+    ImGui::PopID();
+    return hit && !selected;
+}
+
+static void DrawDetectionEngineSettings()
+{
+    UiSection(I18nGet("settings.detection.engine"));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.detection.engine.hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    DetectEngineKind active = DetectEngineActive();
+    const float card_w = ThemePx(280.f);
+    const float img_h = ThemePx(120.f);
+    const float card_h = ThemePx(220.f);
+    const float gap = ThemePx(16.f);
+    DrawEngineOption(DetectEngineKuara, active, card_w, card_h, img_h);
+    ImGui::SameLine(0.f, gap);
+    DrawEngineOption(DetectEngineInternal, active, card_w, card_h, img_h);
+    ImGui::Spacing();
+
+    DetectEngineInfo info{};
+    DetectEngineFillInfo(active, &info);
+    UiSection(I18nGet("settings.detection.engine.info"));
+    float info_w = card_w * 2.f + gap;
+    if (info_w > ImGui::GetContentRegionAvail().x)
+        info_w = ImGui::GetContentRegionAvail().x;
+    ImVec2 panel_p = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(info_w, ThemePx(248.f)));
+    ImVec2 panel_q(panel_p.x + info_w, panel_p.y + ThemePx(248.f));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(panel_p, panel_q, ThemeColCard());
+    dl->AddRect(panel_p, panel_q, ThemeColBorder());
+
+    ImVec2 img0(panel_p.x + 12.f, panel_p.y + 12.f);
+    ImVec2 img1(panel_p.x + 12.f + ThemePx(128.f), panel_p.y + 12.f + ThemePx(128.f));
+    DrawEngineBrand(active, dl, img0, img1);
+    dl->AddRect(img0, img1, ThemeColBorder());
+
+    ImGui::SetCursorScreenPos(ImVec2(img1.x + 16.f, panel_p.y + 14.f));
+    ImGui::BeginGroup();
+    if (ImFont* t = ThemeFontTitle())
+        ImGui::PushFont(t);
+    ImGui::TextUnformatted(I18nGet(info.name_key));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet(info.desc_key));
+    if (!info.brand_url || !info.brand_url[0])
+        ImGui::TextWrapped("%s", I18nGet("settings.detection.engine.image_pending"));
+    ImGui::PopStyleColor();
+    ImGui::EndGroup();
+
+    ImGui::SetCursorScreenPos(ImVec2(panel_p.x + 12.f, img1.y + 16.f));
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.id"), info.id);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.version"), info.version);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.author"), info.author);
+    DrawEngineInfoRow(I18nGet("settings.detection.engine.status"),
+        I18nGet(info.ready ? "settings.detection.engine.ready" : "settings.detection.engine.not_ready"));
+    ImGui::SetCursorScreenPos(ImVec2(panel_p.x, panel_q.y + ThemeSpaceSm()));
+}
+
 static void DrawDetectionSettings()
 {
     if (ImFont* title = ThemeFontTitle())
@@ -188,6 +367,9 @@ static void DrawDetectionSettings()
     ImGui::TextUnformatted(I18nGet("settings.detection"));
     if (ThemeFontTitle())
         ImGui::PopFont();
+    ImGui::Spacing();
+
+    DrawDetectionEngineSettings();
     ImGui::Spacing();
 
     bool packers = DetectSettingPackers();
@@ -469,7 +651,10 @@ static void DrawThemes()
         }
 
         if (hit)
+        {
             ThemePackApplyFile(t->file);
+            UiToastPush(UiToastInfo, I18nGet("toast.theme.title"), I18nGet("toast.theme.body"));
+        }
         ImGui::PopID();
     }
 }

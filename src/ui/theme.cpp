@@ -56,12 +56,20 @@ int ThemeChromeButtonCount() { return 4; } // settings, min, max, close
 float ThemeLabelW() { return ThemePx(200.f); }
 float ThemeTreeMinW() { return ThemePx(168.f); }
 float ThemeSplitHit() { return ThemePx(8.f); }
-float ThemeMenuPadX() { return ThemePx(14.f); }
-float ThemeMenuPadY() { return ThemePx(11.f); }
-float ThemePopupPad() { return ThemePx(10.f); }
+float ThemeMenuPadX() { return ThemeMenuItemPadX(); }
+float ThemeMenuPadY() { return ThemeMenuItemPadY(); }
+float ThemeMenuBarH() { return ThemePx(30.f); }
+float ThemeMenuBarPadX() { return ThemePx(10.f); }
+float ThemeMenuBarPadY() { return ThemePx(5.f); }
+float ThemeMenuItemPadX() { return ThemePx(12.f); }
+float ThemeMenuItemPadY() { return ThemePx(7.f); }
+float ThemePopupPad() { return ThemePx(8.f); }
 float ThemeHitMin() { return ThemePx(28.f); }
 float ThemeRowH() { return ThemePx(28.f); }
 float ThemeTooltipPad() { return ThemePx(10.f); }
+float ThemeToastWidth() { return ThemePx(340.f); }
+float ThemeToastGap() { return ThemePx(8.f); }
+float ThemeToastAccentW() { return ThemePx(3.f); }
 
 static void RefreshDpi()
 {
@@ -113,6 +121,14 @@ ImU32 ThemeColMutedA(float a) { return Col(kMutedFg, a); }
 ImU32 ThemeColAccent() { return Col(kAccent, 1.f); }
 ImU32 ThemeColAccentA(float a) { return Col(kAccent, a); }
 ImU32 ThemeColDanger() { return Col(0xD23030, 1.f); }
+ImU32 ThemeColSuccess() { return Col(0x6BCB8E, 1.f); }
+ImU32 ThemeColWarning() { return Col(0xE6B84D, 1.f); }
+ImU32 ThemeColInfo() { return Col(0x7EB6E6, 1.f); }
+ImU32 ThemeColSelection() { return Col(kAccent, 0.22f); }
+ImU32 ThemeColLogSuccess() { return Col(0x6BCB8E, 1.f); }
+ImU32 ThemeColLogWarning() { return Col(0xE6B84D, 1.f); }
+ImU32 ThemeColLogError() { return Col(0xE07070, 1.f); }
+ImU32 ThemeColLogCritical() { return Col(0xFF5555, 1.f); }
 ImU32 ThemeColHexUnsaved() { return Col(0xD23030, 0.43f); }
 ImU32 ThemeColHexSaved() { return Col(kAccent, 0.43f); }
 ImU32 ThemeColBg() { return Col(kBg, 1.f); }

@@ -15,6 +15,7 @@
 #include "pe/patch.h"
 #include "plugin/plugin.h"
 #include "tool/tool.h"
+#include "findings/findings.h"
 #include "imgui.h"
 
 #include <windows.h>
@@ -35,13 +36,13 @@
 #endif
 
 static char g_sel[96] = "overview";
-static char g_save_msg[160];
 static int g_icon_sel = 0;
 static unsigned g_dirt;
 static int g_rsrc_kind; // 0 all, 1 version, 2 icons, 3 com
 static int g_rsrc_row;
 static int g_an_root;
 static int g_an_child = -1; // -1 = selected root artifact
+static int g_find_sel = -1;
 static int g_reloc_sel;
 static int g_sec_sel;
 static int g_imp_sel;
@@ -259,7 +260,7 @@ static const char* DetectConfTipKey(DetectConfidence conf)
 static ImU32 DetectConfCol(DetectConfidence conf)
 {
     if (conf == DetectConfExact || conf == DetectConfHigh)
-        return ThemeColAccent();
+        return ThemeColInfo();
     if (conf == DetectConfMedium)
         return ThemeColFg();
     return ThemeColMuted();
@@ -455,12 +456,18 @@ static bool RsrcBtn(const char* id, const char* label, int kind, bool dirty, flo
 static bool TopMenu(const char* id, const char* label)
 {
     ImGui::PushID(id);
-    ImGui::PushStyleColor(ImGuiCol_Button, ThemeVec4Transparent());
+    bool popup_open = ImGui::IsPopupOpen("##drop");
+    ImGui::PushStyleColor(ImGuiCol_Button, popup_open
+        ? ImGui::ColorConvertU32ToFloat4(ThemeColHover())
+        : ThemeVec4Transparent());
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::ColorConvertU32ToFloat4(ThemeColHover()));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::ColorConvertU32ToFloat4(ThemeColAccentA(0.22f)));
-    bool press = ImGui::Button(label);
+    ImVec2 ts = ImGui::CalcTextSize(label);
+    float bar_h = ThemeMenuBarH();
+    ImVec2 btn_sz(ts.x + ThemeMenuBarPadX() * 2.f, bar_h - ThemePx(2.f));
+    bool press = ImGui::Button(label, btn_sz);
     ImGui::PopStyleColor(3);
-    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsPopupOpen("##drop"));
+    float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || popup_open);
     UiHoverSweep(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ht);
     if (press)
         ImGui::OpenPopup("##drop", ImGuiPopupFlags_NoReopen);
@@ -527,7 +534,7 @@ static void DrawMenubar()
 {
     ImVec2 p0 = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    float h = ImGui::GetFrameHeight();
+    float h = ThemeMenuBarH();
     ImGui::GetWindowDrawList()->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), ThemeColBg());
     ImGui::GetWindowDrawList()->AddLine(ImVec2(p0.x, p0.y + h), ImVec2(p0.x + w, p0.y + h), ThemeColBorder());
     ImGui::BeginChild("menubar", ImVec2(w, h), ImGuiChildFlags_None,
@@ -537,8 +544,8 @@ static void DrawMenubar()
     bool ready = PeJobResult() != nullptr && !busy;
     bool locked = g_save_phase != 0;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuPadX(), ThemeMenuPadY()));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(2.f), 0.f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ThemeMenuBarPadX(), ThemeMenuBarPadY()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(1.f), 0.f));
 
     if (TopMenu("file", I18nGet("menu.file")))
     {
@@ -689,12 +696,12 @@ static void DrawOverview(const PeFile* pe)
 {
     Field(I18nGet("pe.file"), pe->path, I18nGet("help.fld.file"));
     FieldU(I18nGet("pe.size"), pe->size, false, I18nGet("help.fld.size"));
-    FieldCopy("MD5", pe->md5, I18nGet("help.fld.hash"));
-    FieldCopy("SHA-1", pe->sha1, I18nGet("help.fld.hash"));
-    FieldCopy("SHA-256", pe->sha256, I18nGet("help.fld.hash"));
-    FieldCopy("SHA-512", pe->sha512, I18nGet("help.fld.hash"));
+    FieldCopy(I18nGet("pe.hash_md5"), pe->md5, I18nGet("help.fld.hash"));
+    FieldCopy(I18nGet("pe.hash_sha1"), pe->sha1, I18nGet("help.fld.hash"));
+    FieldCopy(I18nGet("pe.hash_sha256"), pe->sha256, I18nGet("help.fld.hash"));
+    FieldCopy(I18nGet("pe.hash_sha512"), pe->sha512, I18nGet("help.fld.hash"));
     if (pe->imphash[0])
-        FieldCopy("Imphash", pe->imphash, I18nGet("help.fld.imphash"));
+        FieldCopy(I18nGet("pe.imphash"), pe->imphash, I18nGet("help.fld.imphash"));
     FieldIdent(I18nGet("pe.compiler"), pe->compiler, pe->compiler_detected, pe->compiler_conf, I18nGet("help.fld.compiler"));
     FieldIdent(I18nGet("pe.packer"), pe->packer, pe->packer_detected, pe->packer_conf, I18nGet("help.fld.packer"));
     FieldIdent(I18nGet("pe.protector"), pe->protector, pe->protector_detected, pe->protector_conf, I18nGet("help.fld.protector"));
@@ -704,43 +711,47 @@ static void DrawOverview(const PeFile* pe)
     Field(I18nGet("pe.kind"), pe->pe32plus ? "PE32+" : "PE32", I18nGet("help.fld.kind"));
     Field(I18nGet("pe.subsystem"), pe->subsystem_s, I18nGet("help.fld.subsystem"));
     FieldU(I18nGet("pe.sections"), (uint64_t)pe->section_n, false, I18nGet("help.fld.nsec"));
-    FieldU("Entry RVA", pe->entry_rva, true, I18nGet("help.fld.aep"));
-    FieldU("ImageBase", pe->image_base, true, I18nGet("help.fld.imagebase"));
-    Field("CLR / COM", pe->has_com || !pe->typelibs.empty() ? I18nGet("pe.yes") : I18nGet("pe.no"),
+    FieldU(I18nGet("pe.entry_rva"), pe->entry_rva, true, I18nGet("help.fld.aep"));
+    FieldU(I18nGet("pe.image_base"), pe->image_base, true, I18nGet("help.fld.imagebase"));
+    Field(I18nGet("pe.clr_com"), pe->has_com || !pe->typelibs.empty() ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.clr"));
-    FieldU("DllCharacteristics", pe->dllchars, true, I18nGet("help.fld.dllchars"));
-    Field("NX / DEP", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+    FieldU(I18nGet("pe.dll_characteristics"), pe->dllchars, true, I18nGet("help.fld.dllchars"));
+    Field(I18nGet("pe.nx_dep"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.nx"));
-    Field("ASLR", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+    Field(I18nGet("pe.aslr"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.aslr"));
-    Field("CFG", (pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) ? I18nGet("pe.yes") : I18nGet("pe.no"),
+    Field(I18nGet("pe.cfg"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.cfg"));
     Field(I18nGet("pe.checksum"), pe->checksum_ok ? I18nGet("pe.checksum_ok") : I18nGet("pe.checksum_bad"),
         I18nGet("help.fld.checksum"));
     FieldU(I18nGet("pe.checksum_field"), pe->checksum, true, I18nGet("help.fld.checksum"));
     FieldU(I18nGet("pe.checksum_computed"), pe->checksum_computed, true, I18nGet("help.fld.checksum"));
     if (pe->overlay_size)
-        FieldU("Overlay", pe->overlay_size, false, I18nGet("help.fld.overlay"));
+        FieldU(I18nGet("pe.overlay_bytes"), pe->overlay_size, false, I18nGet("help.fld.overlay"));
 }
 
 static void DrawHeaders(const PeFile* pe)
 {
-    FieldU("e_lfanew", pe->e_lfanew, true, I18nGet("help.fld.e_lfanew"));
+    FieldU(I18nGet("pe.field.e_lfanew"), pe->e_lfanew, true, I18nGet("help.fld.e_lfanew"));
     Field(I18nGet("pe.arch"), pe->machine_s, I18nGet("help.fld.arch"));
-    FieldU("Characteristics", pe->chars, true, I18nGet("help.fld.characteristics"));
+    FieldU(I18nGet("pe.field.characteristics"), pe->chars, true, I18nGet("help.fld.characteristics"));
     Field(I18nGet("pe.kind"), pe->pe32plus ? "PE32+" : "PE32", I18nGet("help.fld.kind"));
-    FieldU("AddressOfEntryPoint", pe->entry_rva, true, I18nGet("help.fld.aep"));
-    FieldU("ImageBase", pe->image_base, true, I18nGet("help.fld.imagebase"));
-    FieldU("SectionAlignment", pe->section_align, true, I18nGet("help.fld.secalign"));
-    FieldU("FileAlignment", pe->file_align, true, I18nGet("help.fld.filealign"));
-    FieldU("SizeOfImage", pe->size_of_image, true, I18nGet("help.fld.sizeofimage"));
+    FieldU(I18nGet("pe.field.address_of_entry"), pe->entry_rva, true, I18nGet("help.fld.aep"));
+    FieldU(I18nGet("pe.image_base"), pe->image_base, true, I18nGet("help.fld.imagebase"));
+    FieldU(I18nGet("pe.field.section_alignment"), pe->section_align, true, I18nGet("help.fld.secalign"));
+    FieldU(I18nGet("pe.field.file_alignment"), pe->file_align, true, I18nGet("help.fld.filealign"));
+    FieldU(I18nGet("pe.field.size_of_image"), pe->size_of_image, true, I18nGet("help.fld.sizeofimage"));
     Field(I18nGet("pe.subsystem"), pe->subsystem_s, I18nGet("help.fld.subsystem"));
     if (!pe->rich.empty())
     {
         ImGui::Spacing();
-        ImGui::TextUnformatted("Rich");
+        ImGui::TextUnformatted(I18nGet("pe.rich_header"));
         for (const PeRichEntry& e : pe->rich)
-            ImGui::Text("  prod %u  build %u  x%u", e.prod, e.build, e.count);
+        {
+            char line[64];
+            snprintf(line, sizeof(line), I18nGet("pe.rich_entry"), e.prod, e.build, e.count);
+            ImGui::TextUnformatted(line);
+        }
     }
 }
 
@@ -749,12 +760,12 @@ static void DrawSection(const PeFile* pe, int i)
     if (i < 0 || i >= pe->section_n)
         return;
     const PeSection& s = pe->sections[i];
-    Field("Name", s.name, I18nGet("help.fld.secname"));
-    FieldU("VirtualAddress", s.vaddr, true, I18nGet("help.fld.vaddr"));
-    FieldU("VirtualSize", s.vsize, true, I18nGet("help.fld.vsize"));
-    FieldU("PointerToRawData", s.rawptr, true, I18nGet("help.fld.rawptr"));
-    FieldU("SizeOfRawData", s.rawsize, true, I18nGet("help.fld.rawsize"));
-    FieldU("Characteristics", s.chars, true, I18nGet("help.fld.secchars"));
+    Field(I18nGet("pe.field.name"), s.name, I18nGet("help.fld.secname"));
+    FieldU(I18nGet("pe.field.virtual_address"), s.vaddr, true, I18nGet("help.fld.vaddr"));
+    FieldU(I18nGet("pe.field.virtual_size"), s.vsize, true, I18nGet("help.fld.vsize"));
+    FieldU(I18nGet("pe.field.raw_ptr"), s.rawptr, true, I18nGet("help.fld.rawptr"));
+    FieldU(I18nGet("pe.field.raw_size"), s.rawsize, true, I18nGet("help.fld.rawsize"));
+    FieldU(I18nGet("pe.field.characteristics"), s.chars, true, I18nGet("help.fld.secchars"));
     if (UiButton(I18nGet("menu.go")) && s.rawptr)
         GoHex(s.rawptr);
 }
@@ -783,7 +794,7 @@ static void DrawImportDll(const PeFile* pe, int i)
     if (i < 0 || i >= (int)pe->imports.size())
         return;
     const PeImportDll& d = pe->imports[i];
-    Field("DLL", d.name.c_str());
+    Field(I18nGet("pe.field.dll"), d.name.c_str());
     Field(I18nGet("pe.delay"), d.delay ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.delay"));
     Field(I18nGet("pe.bound"), d.bound ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.bound"));
     FieldU(I18nGet("pe.functions"), d.fns.size(), false);
@@ -791,8 +802,8 @@ static void DrawImportDll(const PeFile* pe, int i)
     if (!ImGui::BeginTable("impfn", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Name");
-    ImGui::TableSetupColumn("Hint/Ord");
+    ImGui::TableSetupColumn(I18nGet("pe.field.name"));
+    ImGui::TableSetupColumn(I18nGet("pe.col.hint_ord"));
     ImGui::TableHeadersRow();
     ImGuiListClipper clipper;
     clipper.Begin((int)d.fns.size());
@@ -803,7 +814,7 @@ static void DrawImportDll(const PeFile* pe, int i)
             const PeImportFn& f = d.fns[fi];
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(f.name.empty() ? "(ordinal)" : f.name.c_str());
+            ImGui::TextUnformatted(f.name.empty() ? I18nGet("pe.export.ordinal") : f.name.c_str());
             ImGui::TableNextColumn();
             if (f.ordinal)
                 ImGui::Text("#%u", f.ordinal);
@@ -826,11 +837,11 @@ static void DrawSections(const PeFile* pe)
         if (g_sec_sel < 0 || g_sec_sel >= pe->section_n)
             g_sec_sel = 0;
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("VA");
-        ImGui::TableSetupColumn("VSize");
-        ImGui::TableSetupColumn("RawPtr");
-        ImGui::TableSetupColumn("RawSize");
+        ImGui::TableSetupColumn(I18nGet("pe.field.name"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.va"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.vsize"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.raw_ptr"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.raw_size"));
         ImGui::TableHeadersRow();
         for (int i = 0; i < pe->section_n; i++)
         {
@@ -941,7 +952,7 @@ static void DrawExportRow(const PeExportFn& e, int i)
     if (ImGui::Selectable(ord, g_exp_sel == i, ImGuiSelectableFlags_SpanAllColumns))
         g_exp_sel = i;
     ImGui::TableNextColumn();
-    ImGui::TextUnformatted(e.name.empty() ? "(ordinal)" : e.name.c_str());
+    ImGui::TextUnformatted(e.name.empty() ? I18nGet("pe.export.ordinal") : e.name.c_str());
     ImGui::TableNextColumn();
     if (e.forwarded)
         ImGui::TextUnformatted(e.forwarder);
@@ -985,9 +996,9 @@ static void DrawExports(const PeFile* pe)
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Ordinal", ImGuiTableColumnFlags_WidthFixed, ThemePx(80.f));
-    ImGui::TableSetupColumn("Name");
-    ImGui::TableSetupColumn("Address");
+    ImGui::TableSetupColumn(I18nGet("pe.col.ordinal"), ImGuiTableColumnFlags_WidthFixed, ThemePx(80.f));
+    ImGui::TableSetupColumn(I18nGet("pe.field.name"));
+    ImGui::TableSetupColumn(I18nGet("pe.col.address"));
     ImGui::TableHeadersRow();
     ImGuiListClipper clipper;
     clipper.Begin((int)idx.size());
@@ -1005,16 +1016,16 @@ static void DrawCom(PeFile* pe)
     ImGui::Spacing();
     if (pe->clr_off)
     {
-        ImGui::TextUnformatted(".NET CLR");
+        ImGui::TextUnformatted(I18nGet("pe.clr_dotnet"));
         int maj = pe->clr_major;
         int minv = pe->clr_minor;
-        if (ImGui::InputInt("CLR major", &maj))
+        if (ImGui::InputInt(I18nGet("pe.clr_major"), &maj))
         {
             pe->clr_major = (uint16_t)maj;
             PePatchClr();
             MarkDirt(DirtCom);
         }
-        if (ImGui::InputInt("CLR minor", &minv))
+        if (ImGui::InputInt(I18nGet("pe.clr_minor"), &minv))
         {
             pe->clr_minor = (uint16_t)minv;
             PePatchClr();
@@ -1023,40 +1034,40 @@ static void DrawCom(PeFile* pe)
         bool il = (pe->clr_flags & 0x1) != 0;
         bool bit32 = (pe->clr_flags & 0x2) != 0;
         bool strong = (pe->clr_flags & 0x8) != 0;
-        if (UiCheckbox("ilonly", "ILONLY", &il))
+        if (UiCheckbox("ilonly", I18nGet("pe.clr_ilonly"), &il))
         {
             if (il) pe->clr_flags |= 0x1; else pe->clr_flags &= ~0x1u;
             PePatchClr();
             MarkDirt(DirtCom);
         }
-        if (UiCheckbox("bit32", "32BITREQUIRED", &bit32))
+        if (UiCheckbox("bit32", I18nGet("pe.clr_32bit"), &bit32))
         {
             if (bit32) pe->clr_flags |= 0x2; else pe->clr_flags &= ~0x2u;
             PePatchClr();
             MarkDirt(DirtCom);
         }
-        if (UiCheckbox("sn", "STRONGNAMESIGNED", &strong))
+        if (UiCheckbox("sn", I18nGet("pe.clr_strongname"), &strong))
         {
             if (strong) pe->clr_flags |= 0x8; else pe->clr_flags &= ~0x8u;
             PePatchClr();
             MarkDirt(DirtCom);
         }
-        FieldU("EntryPointToken", pe->clr_entry, true);
+        FieldU(I18nGet("pe.clr_entry_token"), pe->clr_entry, true);
     }
     else
         ImGui::TextUnformatted(I18nGet("pe.no_clr"));
 
     ImGui::Spacing();
-    ImGui::TextUnformatted("TYPELIB");
+    ImGui::TextUnformatted(I18nGet("pe.typelib"));
     if (pe->typelibs.empty())
         EmptyHint();
     for (int i = 0; i < (int)pe->typelibs.size(); i++)
     {
         PeTypelib& t = pe->typelibs[i];
         ImGui::PushID(i);
-        Field("Name", t.name);
-        FieldU("Offset", t.file_off, true);
-        FieldU("Size", t.size, false);
+        Field(I18nGet("pe.field.name"), t.name);
+        FieldU(I18nGet("pe.col.offset"), t.file_off, true);
+        FieldU(I18nGet("pe.col.size"), t.size, false);
         if (t.msft)
         {
             int ver = (int)t.version;
@@ -1102,7 +1113,7 @@ static void DrawVersion(PeFile* pe)
             for (int i = 0; i < 4; i++)
                 v.file[i] = (uint16_t)(f[i] < 0 ? 0 : f[i]);
             if (!PePatchVerFixed(vi))
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.ver_fit"));
+                UiToastPush(UiToastWarning, I18nGet("toast.ver_fit.title"), I18nGet("toast.ver_fit.body"));
             else
                 MarkDirt(DirtVer);
         }
@@ -1112,7 +1123,7 @@ static void DrawVersion(PeFile* pe)
             for (int i = 0; i < 4; i++)
                 v.prod[i] = (uint16_t)(p[i] < 0 ? 0 : p[i]);
             if (!PePatchVerFixed(vi))
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.ver_fit"));
+                UiToastPush(UiToastWarning, I18nGet("toast.ver_fit.title"), I18nGet("toast.ver_fit.body"));
             else
                 MarkDirt(DirtVer);
         }
@@ -1126,7 +1137,7 @@ static void DrawVersion(PeFile* pe)
             if (ImGui::IsItemDeactivatedAfterEdit())
             {
                 if (!PePatchVerString(vi, si, s.value))
-                    snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.ver_fit"));
+                    UiToastPush(UiToastWarning, I18nGet("toast.ver_fit.title"), I18nGet("toast.ver_fit.body"));
                 else
                     MarkDirt(DirtVer);
             }
@@ -1186,7 +1197,7 @@ static void DrawIcons(PeFile* pe)
     char lab[80];
     snprintf(lab, sizeof(lab), "ICON %u  %dx%d  %d bpp  %u bytes", ic.id, ic.w, ic.h, ic.bpp, ic.size);
     ImGui::TextUnformatted(lab);
-    FieldU("Offset", ic.file_off, true);
+    FieldU(I18nGet("pe.col.offset"), ic.file_off, true);
     if (UiButton(I18nGet("pe.icon_export")))
     {
         char path[MAX_PATH];
@@ -1195,9 +1206,9 @@ static void DrawIcons(PeFile* pe)
         if (AppPickSaveFilter(path, MAX_PATH, L"Icon\0*.ico\0All\0*.*\0", L"Export icon", sug))
         {
             if (PeExportIco(g_icon_sel, path))
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.icon_exported"));
+                UiToastPush(UiToastSuccess, I18nGet("toast.icon_export.title"), I18nGet("toast.icon_export.body"));
             else
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.save_fail"));
+                UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
         }
     }
     ImGui::SameLine();
@@ -1210,10 +1221,10 @@ static void DrawIcons(PeFile* pe)
             {
                 NukeIconTex();
                 MarkDirt(DirtIco);
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.icon_replaced"));
+                UiToastPush(UiToastSuccess, I18nGet("toast.icon_replace.title"), I18nGet("toast.icon_replace.body"));
             }
             else
-                snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet("pe.icon_size"));
+                UiToastPush(UiToastWarning, I18nGet("toast.icon_size.title"), I18nGet("toast.icon_size.body"));
         }
     }
 }
@@ -1417,7 +1428,10 @@ static void DumpAnalysisExport(const PeFile* pe, const AnalysisArtifact* art, co
     size_t n = 0;
     uint8_t* b = PeJobBytes(&n);
     bool ok = AnalyzeExport(pe, b, n, art, ex, path);
-    snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet(ok ? "pe.analysis_dumped" : "pe.save_fail"));
+    if (ok)
+        UiToastPush(UiToastSuccess, I18nGet("toast.export.success.title"), I18nGet("toast.export.success.body"));
+    else
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
     LogInfo(LogBuiltinUI, "Dump %s: %s", art->label, ok ? path : "failed");
 }
 
@@ -1446,7 +1460,7 @@ static void RunToolOnArt(const PeFile* pe, const AnalysisArtifact* art, const To
     char err[64] = "tool.decompile_fail";
     if (!tool->run(art, b, n, &out, sug, (int)sizeof(sug), err, (int)sizeof(err)))
     {
-        snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet(err[0] ? err : "tool.decompile_fail"));
+        UiToastPush(UiToastError, I18nGet("toast.tool.fail.title"), I18nGet(err[0] ? err : "tool.decompile_fail"));
         return;
     }
     char path[MAX_PATH];
@@ -1457,7 +1471,10 @@ static void RunToolOnArt(const PeFile* pe, const AnalysisArtifact* art, const To
     if (!AppPickSaveFilter(path, MAX_PATH, ExportFilter(sug), title, sug))
         return;
     bool ok = WriteUtf8File(path, out);
-    snprintf(g_save_msg, sizeof(g_save_msg), "%s", I18nGet(ok ? "pe.analysis_dumped" : "pe.save_fail"));
+    if (ok)
+        UiToastPush(UiToastSuccess, I18nGet("toast.export.success.title"), I18nGet("toast.export.success.body"));
+    else
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
 }
 
 static void DrawArtifactExports(const PeFile* pe, const AnalysisArtifact* art)
@@ -1775,18 +1792,22 @@ static void DrawArtifactBody(const PeFile* pe, const AnalysisArtifact* art)
         Field(p.key, p.value);
     }
     if (art->rva)
-        FieldU("RVA", art->rva, true);
+        FieldU(I18nGet("pe.col.rva"), art->rva, true);
     if (art->file_off)
-        FieldU("Offset", art->file_off, true, I18nGet("help.fld.rsrcoff"));
+        FieldU(I18nGet("pe.col.offset"), art->file_off, true, I18nGet("help.fld.rsrcoff"));
     if (art->size)
-        FieldU("Size", art->size, false, I18nGet("help.fld.rsrcsize"));
+        FieldU(I18nGet("pe.col.size"), art->size, false, I18nGet("help.fld.rsrcsize"));
     DrawArtifactExports(pe, art);
     uint32_t hex_off = ArtifactFileOff(pe, art);
     if (hex_off)
     {
         ImGui::SameLine();
+        ImGui::PushID(art);
+        ImGui::PushID((int)hex_off);
         if (UiButton(I18nGet("pe.analysis_hex")))
             GoHex(hex_off);
+        ImGui::PopID();
+        ImGui::PopID();
     }
     for (int t = 0; t < (int)art->tables.size(); t++)
         DrawAnalysisTable(pe, art, art->tables[t], t);
@@ -1860,11 +1881,6 @@ static void DrawArtifactBundle(PeFile* pe, const AnalysisArtifact* root, bool pi
         if (g_an_child >= 0 && g_an_child < (int)root->children.size())
             DrawArtifactBody(pe, &root->children[g_an_child]);
     }
-    if (g_save_msg[0])
-    {
-        ImGui::Spacing();
-        ImGui::TextUnformatted(g_save_msg);
-    }
 }
 
 static const AnalysisArtifact* SelectedArtifact(const PeFile* pe)
@@ -1898,17 +1914,17 @@ static bool AnalysisSelectable(const PeFile* pe, const AnalysisArtifact* art, in
 
 static void DrawAnalysis(PeFile* pe)
 {
-    ImGui::TextUnformatted(I18nGet("pe.analysis"));
+    ImGui::TextUnformatted(I18nGet("engine.results"));
     ImGui::SameLine(0.f, ThemeSpaceXs());
     UiHelpMark(I18nGet("help.analysis"));
     ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-    ImGui::TextWrapped("%s", I18nGet("pe.analysis_hint"));
+    ImGui::TextWrapped("%s", I18nGet("engine.results_hint"));
     ImGui::PopStyleColor();
     ImGui::Spacing();
     if (pe->analysis.empty())
     {
-        EmptyHint("pe.analysis_none");
+        EmptyHint("engine.results_none");
         return;
     }
     if (g_an_root < 0 || g_an_root >= (int)pe->analysis.size())
@@ -1978,22 +1994,17 @@ static void DrawAnalysis(PeFile* pe)
     const AnalysisArtifact* cur = SelectedArtifact(pe);
     if (cur)
         DrawArtifactBody(pe, cur);
-    if (g_save_msg[0])
-    {
-        ImGui::Spacing();
-        ImGui::TextUnformatted(g_save_msg);
-    }
     ImGui::EndChild();
 }
 
 static void DrawRsrcPeek(const PeRsrcLeaf& L)
 {
-    Field("Type", L.type_name, I18nGet("help.fld.rsrctype"));
-    Field("Name", L.name, I18nGet("help.fld.rsrcname"));
-    FieldU("Lang", L.lang, true, I18nGet("help.fld.rsrclang"));
-    FieldU("RVA", L.rva, true, I18nGet("help.fld.rsrcrva"));
-    FieldU("Offset", L.file_off, true, I18nGet("help.fld.rsrcoff"));
-    FieldU("Size", L.size, false, I18nGet("help.fld.rsrcsize"));
+    Field(I18nGet("pe.col.type"), L.type_name, I18nGet("help.fld.rsrctype"));
+    Field(I18nGet("pe.field.name"), L.name, I18nGet("help.fld.rsrcname"));
+    FieldU(I18nGet("pe.col.lang"), L.lang, true, I18nGet("help.fld.rsrclang"));
+    FieldU(I18nGet("pe.col.rva"), L.rva, true, I18nGet("help.fld.rsrcrva"));
+    FieldU(I18nGet("pe.col.offset"), L.file_off, true, I18nGet("help.fld.rsrcoff"));
+    FieldU(I18nGet("pe.col.size"), L.size, false, I18nGet("help.fld.rsrcsize"));
     size_t n = 0;
     uint8_t* b = PeJobBytes(&n);
     if (!b || L.file_off >= n)
@@ -2169,10 +2180,10 @@ static void DrawRelocs(const PeFile* pe)
         ImVec2(-1.f, ThemePx(160.f))))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Page RVA");
-        ImGui::TableSetupColumn("Size");
-        ImGui::TableSetupColumn("Entries");
-        ImGui::TableSetupColumn("HL/64");
+        ImGui::TableSetupColumn(I18nGet("pe.col.page_rva"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.entries"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.hl64"));
         ImGui::TableHeadersRow();
         for (int i = 0; i < (int)pe->relocs.size(); i++)
         {
@@ -2198,10 +2209,10 @@ static void DrawRelocs(const PeFile* pe)
     if (ImGui::BeginTable("rele", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("Off");
-        ImGui::TableSetupColumn("RVA");
-        ImGui::TableSetupColumn("File");
+        ImGui::TableSetupColumn(I18nGet("pe.col.type"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.off"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.rva"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.file"));
         ImGui::TableHeadersRow();
         int show = (int)b.entries.size();
         if (show > 4096)
@@ -2243,11 +2254,11 @@ static void DrawTls(const PeFile* pe)
     Field(I18nGet("pe.tls"), pe->tls.present ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.tls"));
     if (!pe->tls.present)
         return;
-    FieldU("StartAddressOfRawData", pe->tls.start_raw, true);
-    FieldU("EndAddressOfRawData", pe->tls.end_raw, true);
-    FieldU("AddressOfIndex", pe->tls.index_va, true);
-    FieldU("AddressOfCallBacks", pe->tls.callbacks_va, true);
-    FieldU("SizeOfZeroFill", pe->tls.zero_fill, false);
+    FieldU(I18nGet("pe.tls.start_raw"), pe->tls.start_raw, true);
+    FieldU(I18nGet("pe.tls.end_raw"), pe->tls.end_raw, true);
+    FieldU(I18nGet("pe.tls.index_va"), pe->tls.index_va, true);
+    FieldU(I18nGet("pe.tls.callbacks_va"), pe->tls.callbacks_va, true);
+    FieldU(I18nGet("pe.tls.zero_fill"), pe->tls.zero_fill, false);
     FieldU(I18nGet("pe.functions"), pe->tls.callback_rvas.size(), false);
     for (uint32_t i = 0; i < (uint32_t)pe->tls.callback_rvas.size(); i++)
     {
@@ -2274,11 +2285,11 @@ static void DrawDebug(const PeFile* pe)
     if (ImGui::BeginTable("dbg", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("Time");
-        ImGui::TableSetupColumn("Size");
-        ImGui::TableSetupColumn("File");
-        ImGui::TableSetupColumn("Extra");
+        ImGui::TableSetupColumn(I18nGet("pe.col.type"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.time"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.file"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.extra"));
         ImGui::TableHeadersRow();
         for (const PeDebugEntry& e : pe->debug)
         {
@@ -2309,8 +2320,8 @@ static void DrawEntropy(const PeFile* pe)
     {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn(I18nGet("pe.range"));
-        ImGui::TableSetupColumn("Offset");
-        ImGui::TableSetupColumn("Size");
+        ImGui::TableSetupColumn(I18nGet("pe.col.offset"));
+        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
         ImGui::TableSetupColumn(I18nGet("pe.entropy"));
         ImGui::TableHeadersRow();
         for (const PeEntropyRange& r : pe->entropy)
@@ -2340,9 +2351,9 @@ static void DrawStrings(const PeFile* pe)
     if (ImGui::BeginTable("str", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Off", ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
-        ImGui::TableSetupColumn("Enc", ImGuiTableColumnFlags_WidthFixed, ThemePx(44.f));
-        ImGui::TableSetupColumn("Text");
+        ImGui::TableSetupColumn(I18nGet("pe.col.off"), ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
+        ImGui::TableSetupColumn(I18nGet("pe.col.enc"), ImGuiTableColumnFlags_WidthFixed, ThemePx(44.f));
+        ImGui::TableSetupColumn(I18nGet("pe.col.text"));
         ImGui::TableHeadersRow();
         int shown = 0;
         auto draw_str_row = [&](int i)
@@ -2356,7 +2367,7 @@ static void DrawStrings(const PeFile* pe)
             if (ImGui::Selectable(id, false, ImGuiSelectableFlags_SpanAllColumns))
                 GoHex((uint32_t)s.file_off);
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(s.utf16 ? "u16" : "asc");
+            ImGui::TextUnformatted(s.utf16 ? I18nGet("pe.str_enc_u16") : I18nGet("pe.str_enc_ascii"));
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(s.text.c_str());
             ImGui::PopID();
@@ -2498,7 +2509,7 @@ static void DrawDetection(const PeFile* pe)
 
 static const char* FindingText(const char* s)
 {
-    if (s && strncmp(s, "find.", 5) == 0)
+    if (s && (strncmp(s, "find.", 5) == 0 || strncmp(s, "finding.", 8) == 0))
         return I18nGet(s);
     return s ? s : "";
 }
@@ -2519,6 +2530,52 @@ static const char* FindingKindKey(PeFindingKind k)
     }
 }
 
+static void DrawFindingDetail(const PeFile* pe, const FindingItem& f)
+{
+    ImGui::Spacing();
+    UiSection(I18nGet("finding.detail.title"));
+    ImGui::TextWrapped("%s", FindingText(f.explain_key));
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("finding.detail.matter"));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", FindingText(f.matter_key));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    ImGui::Text("%s: %s", I18nGet("finding.detail.severity"), I18nGet(FindingSeverityKey(f.severity)));
+    ImGui::SameLine(0.f, ThemeSpaceMd());
+    ImGui::Text("%s: %s", I18nGet("finding.detail.confidence"), I18nGet(FindingConfidenceKey(f.confidence)));
+    if (f.evidence_text[0])
+    {
+        ImGui::Spacing();
+        ImGui::TextUnformatted(I18nGet("finding.detail.evidence"));
+        ImGui::TextWrapped("%s", f.evidence_text);
+    }
+    if (f.next_key[0])
+    {
+        ImGui::Spacing();
+        ImGui::TextUnformatted(I18nGet("finding.detail.next"));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        ImGui::TextWrapped("%s", FindingText(f.next_key));
+        ImGui::PopStyleColor();
+    }
+    if (f.tech_key[0])
+    {
+        ImGui::Spacing();
+        if (ImGui::TreeNode(I18nGet("finding.detail.technical")))
+        {
+            ImGui::TextWrapped("%s", FindingText(f.tech_key));
+            if (f.file_off)
+                ImGui::Text("0x%X", f.file_off);
+            if (f.derived)
+                ImGui::TextUnformatted(I18nGet("finding.detail.derived"));
+            ImGui::TreePop();
+        }
+    }
+    if (f.file_off && UiButton(I18nGet("finding.action.open_hex")))
+        GoHex(f.file_off);
+    (void)pe;
+}
+
 static void DrawFindings(const PeFile* pe)
 {
     ImGui::TextUnformatted(I18nGet("pe.findings"));
@@ -2529,24 +2586,96 @@ static void DrawFindings(const PeFile* pe)
     ImGui::TextWrapped("%s", I18nGet("pe.findings_hint"));
     ImGui::PopStyleColor();
     ImGui::Spacing();
-    if (pe->findings.empty())
+
+    const AnalysisReport& rep = pe->report;
+    if (rep.findings.empty() && pe->findings.empty())
     {
         EmptyHint("pe.findings_none");
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+        ImGui::TextWrapped("%s", I18nGet("finding.summary.disclaimer"));
+        ImGui::PopStyleColor();
         return;
     }
-    int nw = 0, nn = 0, ni = 0;
-    for (const PeFinding& f : pe->findings)
+
+    if (rep.summary.headline_key[0])
     {
-        if (f.sev == PeFindingWarn)
-            nw++;
-        else if (f.sev == PeFindingNotice)
-            nn++;
-        else
-            ni++;
+        UiSection(I18nGet("finding.summary.title"));
+        ImGui::TextWrapped("%s", I18nGet(rep.summary.headline_key));
+        ImGui::Spacing();
     }
-    ImGui::Text("%s: %d  %s: %d  %s: %d",
-        I18nGet("pe.sev_warn"), nw, I18nGet("pe.sev_notice"), nn, I18nGet("pe.sev_info"), ni);
-    ImGui::Spacing();
+
+    if (rep.summary.start_here_n > 0)
+    {
+        UiSection(I18nGet("finding.start_here"));
+        for (int i = 0; i < rep.summary.start_here_n; i++)
+        {
+            int idx = rep.summary.start_here[i];
+            if (idx < 0 || idx >= (int)rep.findings.size())
+                continue;
+            const FindingItem& f = rep.findings[(size_t)idx];
+            ImGui::PushID(1000 + idx);
+            char line[256];
+            snprintf(line, sizeof(line), "%d. %s", i + 1, FindingText(f.title_key));
+            if (ImGui::Selectable(line, g_find_sel == idx))
+                g_find_sel = idx;
+            if (ImGui::IsItemHovered())
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            ImGui::PopID();
+        }
+        ImGui::Spacing();
+    }
+
+    if (!rep.findings.empty())
+    {
+        const std::vector<FindingItem>& items = rep.findings;
+        ImGui::BeginChild("findsplit", ImVec2(0.f, 0.f), false);
+        float half = ImGui::GetContentRegionAvail().x * 0.48f;
+        ImGui::BeginChild("findlist", ImVec2(half, 0.f), true);
+        if (ImGui::BeginTable("find2", 3,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
+        {
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableSetupColumn(I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
+            ImGui::TableSetupColumn(I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, ThemePx(100.f));
+            ImGui::TableSetupColumn(I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableHeadersRow();
+            ImGuiListClipper clip;
+            clip.Begin((int)items.size());
+            while (clip.Step())
+            {
+                for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
+                {
+                    const FindingItem& f = items[(size_t)i];
+                    ImGui::PushID(i);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    bool sel = (g_find_sel == i);
+                    if (ImGui::Selectable(I18nGet(FindingSeverityKey(f.severity)), sel, ImGuiSelectableFlags_SpanAllColumns))
+                        g_find_sel = i;
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(I18nGet(FindingCategoryKey(f.category)));
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(FindingText(f.title_key));
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("finddetail", ImVec2(0.f, 0.f), true);
+        if (g_find_sel >= 0 && g_find_sel < (int)items.size())
+            DrawFindingDetail(pe, items[(size_t)g_find_sel]);
+        else
+            EmptyHint("finding.detail.pick");
+        ImGui::EndChild();
+        ImGui::EndChild();
+        return;
+    }
+
+    // Legacy fallback
     if (!ImGui::BeginTable("find", 4,
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
         ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV |
@@ -2576,7 +2705,7 @@ static void DrawFindings(const PeFile* pe)
             if (f.sev == PeFindingWarn)
             {
                 sev = I18nGet("pe.sev_warn");
-                col = ThemeColAccent();
+                col = ThemeColWarning();
             }
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -2603,15 +2732,7 @@ static void DrawFindings(const PeFile* pe)
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(FindingText(f.title));
             ImGui::TableNextColumn();
-            ImGui::TextWrapped("%s", FindingText(f.why));
-            if (f.evidence[0])
-            {
-                if (ImFont* mono = ThemeFontMono())
-                    ImGui::PushFont(mono);
-                ImGui::TextWrapped("%s", f.evidence);
-                if (ThemeFontMono())
-                    ImGui::PopFont();
-            }
+            ImGui::TextUnformatted(FindingText(f.why));
             ImGui::PopID();
         }
     }
@@ -2664,8 +2785,8 @@ static void DrawDetail(PeFile* pe)
     if (PluginSelIsView(g_sel)) { PluginDrawView(g_sel); return; }
     if (strcmp(g_sel, "overlay") == 0)
     {
-        FieldU("Offset", pe->overlay_off, true, I18nGet("help.fld.rsrcoff"));
-        FieldU("Size", pe->overlay_size, false, I18nGet("help.fld.overlay"));
+        FieldU(I18nGet("pe.col.offset"), pe->overlay_off, true, I18nGet("help.fld.rsrcoff"));
+        FieldU(I18nGet("pe.col.size"), pe->overlay_size, false, I18nGet("help.fld.overlay"));
         return;
     }
     DrawOverview(pe);
@@ -2689,10 +2810,10 @@ static void DrawTree(const PeFile* pe)
     if (!pe->strings.empty())
         Node("strings", I18nGet("pe.strings"), IconEdit, true, false);
     Node("detection", I18nGet("detect.title"), IconShield, true, false);
-    if (!pe->analysis.empty())
-        Node("analysis", I18nGet("pe.analysis"), IconSearch, true, false);
-    if (!pe->findings.empty())
+    if (!pe->report.findings.empty() || !pe->findings.empty())
         Node("findings", I18nGet("pe.findings"), IconEye, true, false);
+    if (!pe->analysis.empty())
+        Node("analysis", I18nGet("engine.results"), IconSearch, true, false);
     Node("hex", I18nGet("pe.hex"), IconHex, true, (g_dirt & DirtHex) != 0);
     Node("changes", I18nGet("patch.title"), IconEdit, true, (g_dirt & DirtHex) != 0);
     if (pe->has_resource || pe->has_com || !pe->typelibs.empty() || !pe->versions.empty() || !pe->icons.empty())
@@ -2701,7 +2822,7 @@ static void DrawTree(const PeFile* pe)
         Node("rsrc", I18nGet("pe.resources"), IconFolder, true, rdirty);
     }
     if (pe->overlay_size)
-        Node("overlay", "Overlay", IconFile, true, false);
+        Node("overlay", I18nGet("pe.tree.overlay"), IconFile, true, false);
     int pv = PluginViewCount();
     for (int i = 0; i < pv; i++)
     {
@@ -2767,9 +2888,19 @@ static void TickSave()
                 snprintf(sum, sizeof(sum), "%s  %s", I18nGet("save.summary_ok"), FileNameOf(g_save_dst));
                 g_dirt = 0;
                 HexViewOnSaved();
+                char backup_body[160];
+                if (PeJobBackupPath()[0])
+                    snprintf(backup_body, sizeof(backup_body), "%s %s",
+                        I18nGet("toast.save.success.body"), FileNameOf(PeJobBackupPath()));
+                else
+                    snprintf(backup_body, sizeof(backup_body), "%s", I18nGet("toast.save.success.body"));
+                UiToastPush(UiToastSuccess, I18nGet("toast.save.success.title"), backup_body);
             }
             else
+            {
                 snprintf(sum, sizeof(sum), "%s", I18nGet("save.summary_fail"));
+                UiToastPush(UiToastError, I18nGet("toast.save.fail.title"), I18nGet("toast.save.fail.body"));
+            }
             ConLog(sum);
             g_save_phase = 2;
             g_save_t = 0.f;
@@ -2888,7 +3019,6 @@ static void FillTree()
     {
         snprintf(seen, sizeof(seen), "%s", pe->path);
         snprintf(g_sel, sizeof(g_sel), "overview");
-        g_save_msg[0] = 0;
         g_icon_sel = 0;
         g_sec_sel = 0;
         g_imp_sel = 0;
@@ -3112,7 +3242,7 @@ static const char* SelCaption()
     if (strcmp(g_sel, "entropy") == 0) return I18nGet("pe.entropy");
     if (strcmp(g_sel, "strings") == 0) return I18nGet("pe.strings");
     if (strcmp(g_sel, "detection") == 0) return I18nGet("detect.title");
-    if (strcmp(g_sel, "analysis") == 0) return I18nGet("pe.analysis");
+    if (strcmp(g_sel, "analysis") == 0) return I18nGet("engine.results");
     if (strcmp(g_sel, "findings") == 0) return I18nGet("pe.findings");
     return g_sel;
 }

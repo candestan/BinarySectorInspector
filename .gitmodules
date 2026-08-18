@@ -13,3 +13,6 @@
 [submodule "plugins/decompsnake"]
 	path = plugins/decompsnake
 	url = https://github.com/candestan/BSI-Decompsnake.git
+[submodule "third_party/kuara_dynamic"]
+	path = third_party/kuara_dynamic
+	url = https://github.com/candestan/KUARA-Dynamic.git

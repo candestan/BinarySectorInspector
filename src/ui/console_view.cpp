@@ -67,13 +67,13 @@ static ImU32 SevColor(LogSeverity sev)
     case LogSevInfo:
         return ThemeColFg();
     case LogSevSuccess:
-        return ThemeColRgb(0x6BCB8E);
+        return ThemeColLogSuccess();
     case LogSevWarning:
-        return ThemeColRgb(0xE6B84D);
+        return ThemeColLogWarning();
     case LogSevError:
-        return ThemeColRgb(0xE07070);
+        return ThemeColLogError();
     case LogSevCritical:
-        return ThemeColRgb(0xFF5555);
+        return ThemeColLogCritical();
     default:
         return ThemeColFg();
     }
@@ -493,6 +493,7 @@ static void RunExport()
     {
         LogError(LogBuiltinUI, "Log export failed to open: %s", path);
         SetStatus(I18nGet("log.export.failed"));
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
         return;
     }
     setvbuf(f, nullptr, _IOFBF, 64 * 1024);
@@ -506,11 +507,13 @@ static void RunExport()
     {
         LogError(LogBuiltinUI, "Log export write failed: %s", path);
         SetStatus(I18nGet("log.export.failed"));
+        UiToastPush(UiToastError, I18nGet("toast.export.fail.title"), I18nGet("toast.export.fail.body"));
         return;
     }
     char msg[256];
     snprintf(msg, sizeof(msg), I18nGet("log.export.success"), (int)rows.size(), FileNameOf(path));
     SetStatus(msg);
+    UiToastPush(UiToastSuccess, I18nGet("toast.export.success.title"), I18nGet("toast.export.success.body"));
     LogInfo(LogBuiltinUI, "%s", msg);
 }
 
@@ -589,7 +592,7 @@ static void DrawExportPopup()
         ImGui::OpenPopup("log_export");
         g_open_export = false;
     }
-    if (!ImGui::BeginPopup("log_export"))
+    if (!UiBeginPopup("log_export"))
         return;
     ImGui::TextUnformatted(I18nGet("log.export.title"));
     ImGui::Separator();
@@ -626,7 +629,7 @@ static void DrawExportPopup()
         g_do_export = true;
         ImGui::CloseCurrentPopup();
     }
-    ImGui::EndPopup();
+    UiEndPopup();
 }
 
 static void HandleConsoleKeys()
@@ -687,7 +690,7 @@ void ConsoleViewDraw()
     ImGui::SameLine();
     if (ImGui::Button(I18nGet("log.filters")))
         ImGui::OpenPopup("log_filters");
-    if (ImGui::BeginPopup("log_filters"))
+    if (UiBeginPopup("log_filters"))
     {
         ImGui::TextUnformatted(I18nGet("log.severity"));
         for (int i = 0; i < LogSevCount; i++)
@@ -743,7 +746,7 @@ void ConsoleViewDraw()
             g_search[0] = 0;
             RebuildVisible();
         }
-        ImGui::EndPopup();
+        UiEndPopup();
     }
     if (!g_sel.empty())
     {

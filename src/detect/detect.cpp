@@ -1,9 +1,12 @@
 #include "detect/detect.h"
 #include "detect/detect_p.h"
+#include "detect/kuara_adapter.h"
 #include "pe/pe.h"
 #include "log/log.h"
 #include "persist/paths.h"
 #include "persist/settings.h"
+#include "app/version.h"
+#include "kuara/kuara.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -19,6 +22,7 @@
 
 static std::mutex g_mu;
 static std::vector<CompiledSig> g_sigs;
+static std::vector<std::string> g_sig_files;
 static std::vector<std::string> g_extra_packs;
 static DetectLoadStats g_stats;
 static char g_builtin_dir[MAX_PATH];
@@ -27,6 +31,14 @@ static char g_packs_dir[MAX_PATH];
 static LogScope g_log_sig;
 static LogScope g_log_pe;
 static bool g_log_ready;
+static char g_applied_path[MAX_PATH];
+static int  g_applied_key = -1;
+
+static void DetectClearApplied()
+{
+    g_applied_path[0] = 0;
+    g_applied_key = -1;
+}
 
 static LogScope& SigLog()
 {
@@ -120,7 +132,8 @@ static bool IdTaken(const std::vector<CompiledSig>& list, const std::string& id)
     return false;
 }
 
-static void LoadFile(const char* path, DetectSource src, std::vector<CompiledSig>* list, DetectLoadStats* st)
+static void LoadFile(const char* path, DetectSource src, std::vector<CompiledSig>* list, DetectLoadStats* st,
+    std::vector<std::string>* files)
 {
     std::string body, err;
     if (!ReadFileCapped(path, &body, &err))
@@ -149,6 +162,8 @@ static void LoadFile(const char* path, DetectSource src, std::vector<CompiledSig
         return;
     }
     list->push_back(std::move(sig));
+    if (files)
+        files->push_back(path);
     if (src == DetectSrcBuiltin)
         st->builtin++;
     else if (src == DetectSrcPack)
@@ -157,7 +172,8 @@ static void LoadFile(const char* path, DetectSource src, std::vector<CompiledSig
         st->user++;
 }
 
-static void WalkDir(const char* dir, DetectSource src, std::vector<CompiledSig>* list, DetectLoadStats* st, int depth)
+static void WalkDir(const char* dir, DetectSource src, std::vector<CompiledSig>* list, DetectLoadStats* st, int depth,
+    std::vector<std::string>* files)
 {
     if (!dir || !dir[0] || depth > 6)
         return;
@@ -177,7 +193,7 @@ static void WalkDir(const char* dir, DetectSource src, std::vector<CompiledSig>*
         {
             char sub[MAX_PATH];
             snprintf(sub, MAX_PATH, "%s\\", path);
-            WalkDir(sub, src, list, st, depth + 1);
+            WalkDir(sub, src, list, st, depth + 1, files);
             continue;
         }
         const char* ext = strrchr(fd.cFileName, '.');
@@ -185,20 +201,22 @@ static void WalkDir(const char* dir, DetectSource src, std::vector<CompiledSig>*
             continue;
         if (_stricmp(fd.cFileName, "pack.json") == 0)
             continue;
-        LoadFile(path, src, list, st);
+        LoadFile(path, src, list, st, files);
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 }
 
-static void LoadAllUnlocked(std::vector<CompiledSig>* list, DetectLoadStats* st)
+static void LoadAllUnlocked(std::vector<CompiledSig>* list, DetectLoadStats* st, std::vector<std::string>* files)
 {
     *list = {};
     *st = {};
+    if (files)
+        files->clear();
     InitDirs();
     MakeDir(g_user_dir);
     MakeDir(g_packs_dir);
-    WalkDir(g_builtin_dir, DetectSrcBuiltin, list, st, 0);
-    WalkDir(g_packs_dir, DetectSrcPack, list, st, 0);
+    WalkDir(g_builtin_dir, DetectSrcBuiltin, list, st, 0, files);
+    WalkDir(g_packs_dir, DetectSrcPack, list, st, 0, files);
     for (const std::string& extra : g_extra_packs)
     {
         char dir[MAX_PATH];
@@ -206,11 +224,57 @@ static void LoadAllUnlocked(std::vector<CompiledSig>* list, DetectLoadStats* st)
         size_t n = strlen(dir);
         if (n && dir[n - 1] != '\\')
             snprintf(dir, MAX_PATH, "%s\\", extra.c_str());
-        WalkDir(dir, DetectSrcPack, list, st, 0);
+        WalkDir(dir, DetectSrcPack, list, st, 0, files);
     }
     if (SettingsGetBool("detect.user_signatures", true))
-        WalkDir(g_user_dir, DetectSrcUser, list, st, 0);
+        WalkDir(g_user_dir, DetectSrcUser, list, st, 0, files);
     st->total = (int)list->size();
+}
+
+static DetectEngineKind ParseEngineKind(const char* s)
+{
+    if (s && _stricmp(s, "internal") == 0)
+        return DetectEngineInternal;
+    return DetectEngineKuara;
+}
+
+DetectEngineKind DetectEngineActive()
+{
+    char mode[32];
+    SettingsGetString("detect.engine", mode, (int)sizeof(mode), "kuara");
+    return ParseEngineKind(mode);
+}
+
+void DetectSetEngine(DetectEngineKind kind)
+{
+    SettingsSetString("detect.engine", kind == DetectEngineInternal ? "internal" : "kuara");
+    SettingsSave();
+}
+
+void DetectEngineFillInfo(DetectEngineKind kind, DetectEngineInfo* out)
+{
+    if (!out)
+        return;
+    *out = {};
+    out->kind = kind;
+    if (kind == DetectEngineInternal)
+    {
+        out->id = "com.candestan.bsi.internal";
+        out->name_key = "settings.detection.engine.internal";
+        out->desc_key = "settings.detection.engine.desc.internal";
+        out->author = "candestan";
+        out->version = VersionString();
+        out->brand_url = "";
+        out->ready = true;
+        return;
+    }
+    out->id = kuara::EngineId();
+    out->name_key = "settings.detection.engine.kuara";
+    out->desc_key = "settings.detection.engine.desc.kuara";
+    out->author = kuara::EngineAuthor();
+    out->version = kuara::EngineVersion();
+    out->brand_url = kuara::BrandImageUrl();
+    out->ready = KuaraIsReady();
 }
 
 void DetectInit()
@@ -219,22 +283,30 @@ void DetectInit()
     MakeDir(g_user_dir);
     MakeDir(g_packs_dir);
     std::vector<CompiledSig> list;
+    std::vector<std::string> files;
     DetectLoadStats st;
-    LoadAllUnlocked(&list, &st);
+    LoadAllUnlocked(&list, &st, &files);
     {
         std::lock_guard<std::mutex> lock(g_mu);
         g_sigs.swap(list);
+        g_sig_files.swap(files);
         g_stats = st;
     }
     SigLog();
     DetectLogSig(LogSevInfo, "Loaded %d signatures (%d built-in, %d pack, %d user, %d invalid, %d collisions)",
         st.total, st.builtin, st.pack, st.user, st.invalid, st.collisions);
+    std::string kuara_err;
+    if (KuaraReloadRules(g_sig_files, &kuara_err))
+        DetectLogSig(LogSevInfo, "KUARA rules compiled from %d signature files", (int)g_sig_files.size());
+    else if (DetectEngineActive() == DetectEngineKuara)
+        DetectLogSig(LogSevWarning, "KUARA compile failed, falling back to legacy matcher (%s)", kuara_err.c_str());
 }
 
 void DetectShutdown()
 {
     std::lock_guard<std::mutex> lock(g_mu);
     g_sigs.clear();
+    g_sig_files.clear();
     g_extra_packs.clear();
     g_stats = {};
 }
@@ -242,15 +314,23 @@ void DetectShutdown()
 bool DetectReload()
 {
     std::vector<CompiledSig> list;
+    std::vector<std::string> files;
     DetectLoadStats st;
-    LoadAllUnlocked(&list, &st);
+    LoadAllUnlocked(&list, &st, &files);
     {
         std::lock_guard<std::mutex> lock(g_mu);
         g_sigs.swap(list);
+        g_sig_files.swap(files);
         g_stats = st;
     }
     DetectLogSig(LogSevInfo, "Reloaded %d signatures (%d built-in, %d pack, %d user, %d invalid, %d collisions)",
         st.total, st.builtin, st.pack, st.user, st.invalid, st.collisions);
+    std::string kuara_err;
+    if (KuaraReloadRules(g_sig_files, &kuara_err))
+        DetectLogSig(LogSevInfo, "KUARA rules recompiled from %d signature files", (int)g_sig_files.size());
+    else if (DetectEngineActive() == DetectEngineKuara)
+        DetectLogSig(LogSevWarning, "KUARA recompile failed, falling back to legacy matcher (%s)", kuara_err.c_str());
+    DetectClearApplied();
     return true;
 }
 
@@ -326,6 +406,18 @@ void DetectRun(const DetectFacts& facts, std::vector<DetectionResult>* out)
         out->clear();
     if (!out || !facts.is_pe)
         return;
+    if (DetectEngineActive() == DetectEngineKuara && KuaraRunDetect(facts, out))
+    {
+        out->erase(std::remove_if(out->begin(), out->end(), [](const DetectionResult& r) {
+            return !CatEnabled(r.category);
+        }), out->end());
+        for (const DetectionResult& r : *out)
+        {
+            DetectLogPe(LogSevInfo, "Detected %s (%s) with %s confidence",
+                r.product.c_str(), DetectCategoryId(r.category), DetectConfidenceId(r.confidence));
+        }
+        return;
+    }
 
     std::vector<CompiledSig> snap;
     {
@@ -531,9 +623,27 @@ static void FillSummary(char* dst, int cap, bool* detected, DetectConfidence* co
         snprintf(dst, cap, "%s %s", best->product.c_str(), best->version.c_str());
 }
 
+static int DetectSettingsFingerprint()
+{
+    int key = (int)DetectEngineActive();
+    if (DetectSettingPackers())
+        key |= 1 << 4;
+    if (DetectSettingCompilers())
+        key |= 1 << 5;
+    if (DetectSettingDotNet())
+        key |= 1 << 6;
+    if (DetectSettingUserSigs())
+        key |= 1 << 7;
+    key |= (DetectStats().total & 0xFFFF) << 8;
+    return key;
+}
+
 void DetectApplyToPe(PeFile* pe, const uint8_t* bytes, size_t n)
 {
     if (!pe)
+        return;
+    int key = DetectSettingsFingerprint();
+    if (pe->path[0] && g_applied_key == key && strcmp(g_applied_path, pe->path) == 0)
         return;
     pe->detections.clear();
     pe->compiler_detected = false;
@@ -555,6 +665,11 @@ void DetectApplyToPe(PeFile* pe, const uint8_t* bytes, size_t n)
         pe->detections, prot, 1, "none");
     FillSummary(pe->obfuscator, (int)sizeof(pe->obfuscator), &pe->obfuscator_detected, &pe->obfuscator_conf,
         pe->detections, net, 1, "none");
+    if (pe->path[0])
+        snprintf(g_applied_path, sizeof(g_applied_path), "%s", pe->path);
+    else
+        g_applied_path[0] = 0;
+    g_applied_key = key;
 }
 
 bool DetectSettingPackers() { return SettingsGetBool("detect.packers", true); }
@@ -596,6 +711,7 @@ void DetectResetForTest()
     std::lock_guard<std::mutex> lock(g_mu);
     g_sigs.clear();
     g_stats = {};
+    DetectClearApplied();
 }
 
 bool DetectLoadJsonForTest(const char* json, DetectSource src, const char* origin, char* err, int err_cap)

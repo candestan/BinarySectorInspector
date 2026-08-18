@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "default",
+  "display_name": "Standard",
+  "analysis_depth": "standard",
+  "stages": [
+    "signatures",
+    "specialized_analysis",
+    "atomic_findings",
+    "correlation",
+    "summary"
+  ],
+  "capabilities": {
+    "signature_detection": true,
+    "resource_analysis": true,
+    "embedded_payload_analysis": true,
+    "compiler_metadata": true,
+    "script_artifact_analysis": true,
+    "structural_heuristics": true,
+    "import_behavior": true,
+    "string_indicators": true,
+    "correlation": true
+  },
+  "budgets": {
+    "max_artifacts": 64,
+    "max_findings": 120,
+    "max_evidence": 256,
+    "max_correlation_passes": 2,
+    "max_analyzer_passes": 1,
+    "max_nested_depth": 2,
+    "max_scan_bytes": 67108864
+  }
+}

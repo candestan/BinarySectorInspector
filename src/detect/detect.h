@@ -128,6 +128,25 @@ struct DetectLoadStats
     int total = 0;
 };
 
+enum DetectEngineKind : uint8_t
+{
+    DetectEngineKuara = 0,
+    DetectEngineInternal = 1,
+    DetectEngineCount
+};
+
+struct DetectEngineInfo
+{
+    DetectEngineKind kind = DetectEngineKuara;
+    const char* id = "";
+    const char* name_key = "";
+    const char* desc_key = "";
+    const char* author = "";
+    const char* version = "";
+    const char* brand_url = "";
+    bool ready = true;
+};
+
 void DetectInit();
 void DetectShutdown();
 bool DetectReload();
@@ -152,6 +171,10 @@ void DetectSetPackers(bool on);
 void DetectSetCompilers(bool on);
 void DetectSetDotNet(bool on);
 void DetectSetUserSigs(bool on);
+
+DetectEngineKind DetectEngineActive();
+void DetectSetEngine(DetectEngineKind kind);
+void DetectEngineFillInfo(DetectEngineKind kind, DetectEngineInfo* out);
 
 const char* DetectCategoryId(DetectCategory cat);
 const char* DetectConfidenceId(DetectConfidence conf);

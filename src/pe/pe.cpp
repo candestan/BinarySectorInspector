@@ -2,7 +2,7 @@
 #include "pe/patch.h"
 #include "log/log.h"
 #include "detect/detect.h"
-#include "analyze/analyze.h"
+#include "analyze/engine.h"
 
 #include <windows.h>
 #include <delayimp.h>
@@ -1390,9 +1390,7 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         progress->store(0.95f);
     ExtractStrings(data, n, out);
     out->ok = true;
-    DetectApplyToPe(out, data, n);
-    AnalyzeRun(out, data, n);
-    PeCollectFindings(out);
+    AnalyzeEngineRun(out, data, n);
     if (progress)
         progress->store(1.f);
     return true;

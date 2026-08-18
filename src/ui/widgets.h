@@ -29,3 +29,14 @@ void  UiPopupFadePop();
 void  UiEmpty(const char* title, const char* detail = nullptr);
 void  UiSection(const char* title);
 void  UiTipWhenDisabled(const char* text);
+
+enum UiToastType
+{
+    UiToastSuccess = 0,
+    UiToastInfo,
+    UiToastWarning,
+    UiToastError,
+};
+
+void  UiToastPush(UiToastType type, const char* title, const char* body = nullptr);
+void  UiToastDraw();
