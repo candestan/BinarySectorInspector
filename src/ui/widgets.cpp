@@ -1,6 +1,8 @@
 #include "ui/widgets.h"
 #include "ui/theme.h"
 #include "persist/settings.h"
+#include "i18n/i18n.h"
+#include "ui/icons.h"
 #include "imgui.h"
 
 #include <math.h>
@@ -263,6 +265,91 @@ void UiTipWhenDisabled(const char* text)
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled | ImGuiHoveredFlags_DelayShort))
         return;
     UiTooltip(text);
+}
+
+void UiBadge(const char* id, const char* label, ImU32 col, const char* tip)
+{
+    if (!label || !label[0])
+        return;
+    ImGui::PushID(id ? id : "badge");
+    ImFont* sm = ThemeFontSmall();
+    if (sm)
+        ImGui::PushFont(sm);
+    ImVec2 ts = ImGui::CalcTextSize(label);
+    float pad_x = ThemePx(6.f);
+    float pad_y = ThemePx(1.5f);
+    ImVec2 sz(ts.x + pad_x * 2.f, ts.y + pad_y * 2.f);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("badge", sz);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImU32 bg = ThemeWithAlpha(col, 0.16f);
+    float r = ThemePx(3.f);
+    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, r);
+    dl->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y), col, r, 0, 1.f);
+    dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), col, label);
+    if (tip && tip[0] && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(tip);
+    if (sm)
+        ImGui::PopFont();
+    ImGui::PopID();
+}
+
+bool UiCopyButton(const char* id, const char* text)
+{
+    ImGui::PushID(id ? id : "copy");
+    float h = ImGui::GetFrameHeight();
+    if (h < ThemePx(28.f))
+        h = ThemePx(28.f);
+    float w = h;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    bool disabled = !text || !text[0];
+    if (disabled)
+        ImGui::BeginDisabled();
+    bool hit = ImGui::InvisibleButton("cpy", ImVec2(w, h));
+    ImVec2 q = ImGui::GetItemRectMax();
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    float ht = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        ht = 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImU32 fill = UiLerpCol(ThemeColCard(), ThemeColHover(), ht);
+    if (active)
+        fill = UiLerpCol(fill, ThemeColAccent(), 0.16f);
+    dl->AddRectFilled(p, q, fill);
+    UiHandIfHovered();
+    ImU32 col = UiLerpCol(ThemeColFg(), ThemeColAccent(), ht);
+    float s = IconSize(IconRoleMd);
+    IconDraw(IconCopy, ImVec2(p.x + w * 0.5f, p.y + h * 0.5f), s, col, dl);
+    if (disabled)
+        ImGui::EndDisabled();
+    else if (hit)
+    {
+        ImGui::SetClipboardText(text);
+        UiToastPush(UiToastSuccess, I18nGet("toast.copy.title"), nullptr);
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+        UiTooltip(I18nGet("ui.copy"));
+    ImGui::PopID();
+    return hit && !disabled;
+}
+
+void UiFieldText(const char* id, char* buf, int buf_cap, float width)
+{
+    if (!id || !buf || buf_cap < 2)
+        return;
+    ImGui::PushID(id);
+    ImGui::AlignTextToFramePadding();
+    ImGui::SetNextItemWidth(width);
+    ImVec4 frame = ImGui::ColorConvertU32ToFloat4(ThemeColCardA(0.45f));
+    ImVec4 border = ImGui::ColorConvertU32ToFloat4(ThemeColBorderA(0.35f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, frame);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, frame);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, frame);
+    ImGui::PushStyleColor(ImGuiCol_Border, border);
+    ImGui::InputText("##field", buf, (size_t)buf_cap, ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopStyleColor(4);
+    ImGui::PopID();
 }
 
 void UiPushPopupMetrics()

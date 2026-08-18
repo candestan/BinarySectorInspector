@@ -29,6 +29,9 @@ void  UiPopupFadePop();
 void  UiEmpty(const char* title, const char* detail = nullptr);
 void  UiSection(const char* title);
 void  UiTipWhenDisabled(const char* text);
+void  UiBadge(const char* id, const char* label, ImU32 col, const char* tip = nullptr);
+bool  UiCopyButton(const char* id, const char* text);
+void  UiFieldText(const char* id, char* buf, int buf_cap, float width);
 
 enum UiToastType
 {
