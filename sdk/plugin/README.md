@@ -75,6 +75,8 @@ Draw callbacks run on the UI thread. Do not link ImGui; use `BsiUi`.
 
 Additive queries: `detection_*`, `rsrc_*`, `section_*`, `hex_goto` / `hex_select`, `open_job`.
 
+PE layout (probe with `BSI_HOST_HAS`): `pe_machine` (`IMAGE_FILE_MACHINE_*`), `image_base`, `entry_rva`, `rva_to_off` / `off_to_rva`. `hex_cursor` returns the hex view selection (`file_off`, `size`); 0 if none.
+
 ## Card visuals
 
 Settings → Plugins draws one card per loaded DLL. Art is optional and **local only** (no HTTP).
