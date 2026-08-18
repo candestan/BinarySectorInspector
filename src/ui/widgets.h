@@ -33,6 +33,21 @@ void  UiBadge(const char* id, const char* label, ImU32 col, const char* tip = nu
 bool  UiCopyButton(const char* id, const char* text);
 void  UiFieldText(const char* id, char* buf, int buf_cap, float width);
 
+enum { UiTableColMax = 16 };
+
+struct UiTableColDef
+{
+    const char*           id;
+    const char*           label;
+    ImGuiTableColumnFlags flags;
+    float                 def_w; // logical px; 0 = stretch/default
+};
+
+bool  UiBeginPersistTable(const char* table_id, const UiTableColDef* cols, int n,
+    ImGuiTableFlags flags, ImVec2 outer_size = ImVec2(0, 0));
+void  UiEndPersistTable();
+float UiPersistSplitW(const char* id, float* sz, float def_frac, float min_a, float min_b);
+
 enum UiToastType
 {
     UiToastSuccess = 0,

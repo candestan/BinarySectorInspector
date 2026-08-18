@@ -168,6 +168,7 @@ bool EngineInit(HINSTANCE inst, bool force_sw)
 
 void EngineShutdown()
 {
+    SettingsFlush();
     for (int i = 0; i < kMaxForms; i++)
         if (g_forms[i].live)
             KillForm(&g_forms[i]);

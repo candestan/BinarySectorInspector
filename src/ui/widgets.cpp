@@ -4,6 +4,7 @@
 #include "i18n/i18n.h"
 #include "ui/icons.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <math.h>
 #include <float.h>
@@ -350,6 +351,163 @@ void UiFieldText(const char* id, char* buf, int buf_cap, float width)
     ImGui::InputText("##field", buf, (size_t)buf_cap, ImGuiInputTextFlags_ReadOnly);
     ImGui::PopStyleColor(4);
     ImGui::PopID();
+}
+
+enum { kPersistStackMax = 4 };
+
+struct PersistTableFrame
+{
+    char  id[48];
+    char  col[UiTableColMax][48];
+    float def_w[UiTableColMax];
+    int   n;
+};
+
+static PersistTableFrame g_persist_stack[kPersistStackMax];
+static int g_persist_n;
+
+struct PersistApply
+{
+    char id[48];
+    int  epoch;
+};
+
+static PersistApply g_persist_applied[32];
+
+static int PersistAppliedEpoch(const char* id)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        if (g_persist_applied[i].id[0] && strcmp(g_persist_applied[i].id, id) == 0)
+            return g_persist_applied[i].epoch;
+    }
+    return -1;
+}
+
+static void PersistMarkApplied(const char* id, int epoch)
+{
+    int slot = -1;
+    for (int i = 0; i < 32; i++)
+    {
+        if (g_persist_applied[i].id[0] && strcmp(g_persist_applied[i].id, id) == 0)
+        {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && !g_persist_applied[i].id[0])
+            slot = i;
+    }
+    if (slot < 0)
+        slot = 0;
+    snprintf(g_persist_applied[slot].id, sizeof(g_persist_applied[slot].id), "%s", id);
+    g_persist_applied[slot].epoch = epoch;
+}
+
+bool UiBeginPersistTable(const char* table_id, const UiTableColDef* cols, int n,
+    ImGuiTableFlags flags, ImVec2 outer_size)
+{
+    if (!table_id || !table_id[0] || !cols || n < 1)
+        return false;
+    if (n > UiTableColMax)
+        n = UiTableColMax;
+    flags |= ImGuiTableFlags_NoSavedSettings;
+    if (!ImGui::BeginTable(table_id, n, flags, outer_size))
+        return false;
+    if (g_persist_n >= kPersistStackMax)
+    {
+        ImGui::EndTable();
+        return false;
+    }
+    PersistTableFrame& f = g_persist_stack[g_persist_n++];
+    snprintf(f.id, sizeof(f.id), "%s", table_id);
+    f.n = n;
+    float dpi = ThemeDpi();
+    if (dpi < 0.5f)
+        dpi = 1.f;
+    for (int i = 0; i < n; i++)
+    {
+        snprintf(f.col[i], sizeof(f.col[i]), "%s", cols[i].id ? cols[i].id : "col");
+        f.def_w[i] = cols[i].def_w;
+        ImGuiTableColumnFlags cf = cols[i].flags;
+        float init = 0.f;
+        bool skip_saved = (cf & ImGuiTableColumnFlags_WidthFixed) != 0 && cols[i].def_w <= 0.f;
+        if (skip_saved)
+            init = 0.f;
+        else if (SettingsLayoutHasCol(table_id, f.col[i]))
+        {
+            init = SettingsLayoutColW(table_id, f.col[i], cols[i].def_w) * dpi;
+            cf = (cf & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;
+        }
+        else if (cols[i].def_w > 0.f)
+            init = ThemePx(cols[i].def_w);
+        ImGui::TableSetupColumn(cols[i].label ? cols[i].label : f.col[i], cf, init);
+    }
+    int epoch = SettingsLayoutEpoch();
+    if (PersistAppliedEpoch(table_id) != epoch)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            float px = 0.f;
+            bool skip_saved = (cols[i].flags & ImGuiTableColumnFlags_WidthFixed) != 0 && f.def_w[i] <= 0.f;
+            if (skip_saved)
+                px = 0.f;
+            else if (SettingsLayoutHasCol(table_id, f.col[i]))
+                px = SettingsLayoutColW(table_id, f.col[i], f.def_w[i]) * dpi;
+            else if (f.def_w[i] > 0.f)
+                px = ThemePx(f.def_w[i]);
+            if (px > 0.f)
+                ImGui::TableSetColumnWidth(i, px);
+        }
+        PersistMarkApplied(table_id, epoch);
+    }
+    return true;
+}
+
+void UiEndPersistTable()
+{
+    if (g_persist_n <= 0)
+    {
+        ImGui::EndTable();
+        return;
+    }
+    PersistTableFrame f = g_persist_stack[--g_persist_n];
+    ImGuiTable* t = ImGui::GetCurrentTable();
+    if (t && t->ResizedColumn != -1)
+    {
+        float dpi = ThemeDpi();
+        if (dpi < 0.5f)
+            dpi = 1.f;
+        int nc = t->ColumnsCount;
+        if (nc > f.n)
+            nc = f.n;
+        for (int i = 0; i < nc; i++)
+        {
+            float w = t->Columns[i].WidthGiven;
+            if (w < 8.f)
+                continue;
+            SettingsLayoutSetColW(f.id, f.col[i], w / dpi);
+        }
+    }
+    ImGui::EndTable();
+}
+
+float UiPersistSplitW(const char* id, float* sz, float def_frac, float min_a, float min_b)
+{
+    (void)id;
+    float avail = ImGui::GetContentRegionAvail().x;
+    if (!sz)
+        return avail * (def_frac > 0.f ? def_frac : 0.36f);
+    if (*sz < 1.f)
+        *sz = avail * (def_frac > 0.f ? def_frac : 0.36f);
+    if (*sz < min_a)
+        *sz = min_a;
+    if (*sz + min_b > avail)
+        *sz = avail - min_b;
+    if (*sz < min_a)
+        *sz = min_a;
+    if (*sz < ThemePx(48.f))
+        *sz = ThemePx(48.f);
+    return *sz;
 }
 
 void UiPushPopupMetrics()

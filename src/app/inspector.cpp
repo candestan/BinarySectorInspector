@@ -78,34 +78,97 @@ static int   g_tree_pri = 1;
 static int   g_cons_pri = 0;
 
 static const float kSplitListFrac = 0.36f;
+static float g_split_sec;
+static float g_split_imp;
+static float g_split_an;
+static float g_split_rsrc;
+static float g_split_find;
+static float g_pair_frac = 0.5f;
 
 static float g_sel_bar_y = -1.f;
 static float g_sel_bar_h;
 static float g_sel_bar_x0;
 static float g_sel_bar_x1;
 
+static bool g_layout_loaded;
+static int  g_layout_seen_epoch = -1;
+
+static float LayoutPx(const char* key, float fallback_logical)
+{
+    float dpi = ThemeDpi();
+    if (dpi < 0.5f)
+        dpi = 1.f;
+    if (SettingsLayoutHas(key))
+    {
+        float logical = SettingsLayoutGet(key, fallback_logical);
+        if (logical < 8.f)
+            logical = 8.f;
+        return logical * dpi;
+    }
+    return ThemePx(fallback_logical);
+}
+
+static void LayoutSavePx(const char* key, float physical)
+{
+    float dpi = ThemeDpi();
+    if (dpi < 0.5f)
+        dpi = 1.f;
+    SettingsLayoutSet(key, physical / dpi);
+}
+
 static void LoadViewLayout()
 {
-    static bool once;
-    if (once)
+    int epoch = SettingsLayoutEpoch();
+    if (g_layout_loaded && g_layout_seen_epoch == epoch)
         return;
-    once = true;
+    g_layout_loaded = true;
+    g_layout_seen_epoch = epoch;
     g_tree_on = SettingsGetBool("view.tree", true);
     g_cons_on = SettingsGetBool("view.console", true);
     g_tree_dock = SettingsGetInt("view.tree_dock", DockLeft);
     g_cons_dock = SettingsGetInt("view.console_dock", DockBottom);
-    int tw = SettingsGetInt("view.tree_w", (int)ThemePx(248.f));
-    int ch = SettingsGetInt("view.console_h", (int)ThemePx(148.f));
+    if (SettingsLayoutHas("panel.tree"))
+        g_tree_sz = LayoutPx("panel.tree", 248.f);
+    else
+    {
+        int tw = SettingsGetInt("view.tree_w", (int)ThemePx(248.f));
+        g_tree_sz = (float)tw;
+    }
+    if (SettingsLayoutHas("panel.console"))
+        g_cons_sz = LayoutPx("panel.console", 148.f);
+    else
+    {
+        int ch = SettingsGetInt("view.console_h", (int)ThemePx(148.f));
+        g_cons_sz = (float)ch;
+    }
     float tmin = ThemeTreeMinW();
     float cmin = ThemePx(72.f);
-    g_tree_sz = tw < (int)tmin ? tmin : (float)tw;
-    g_cons_sz = ch < (int)cmin ? cmin : (float)ch;
+    if (g_tree_sz < tmin)
+        g_tree_sz = tmin;
+    if (g_cons_sz < cmin)
+        g_cons_sz = cmin;
     g_tree_pri = SettingsGetInt("view.tree_pri", 1);
     g_cons_pri = SettingsGetInt("view.console_pri", 0);
     if (g_tree_dock < 0 || g_tree_dock > 3)
         g_tree_dock = DockLeft;
     if (g_cons_dock < 0 || g_cons_dock > 3)
         g_cons_dock = DockBottom;
+    g_split_sec = SettingsLayoutHas("split.sections") ? LayoutPx("split.sections", 220.f) : 0.f;
+    g_split_imp = SettingsLayoutHas("split.imports") ? LayoutPx("split.imports", 220.f) : 0.f;
+    g_split_an = SettingsLayoutHas("split.analysis") ? LayoutPx("split.analysis", 220.f) : 0.f;
+    g_split_rsrc = SettingsLayoutHas("split.resources") ? LayoutPx("split.resources", 220.f) : 0.f;
+    g_split_find = SettingsLayoutHas("split.findings") ? LayoutPx("split.findings", 280.f) : 0.f;
+    g_pair_frac = SettingsLayoutGet("split.dock_pair", 0.5f);
+    if (g_pair_frac < 0.2f)
+        g_pair_frac = 0.2f;
+    if (g_pair_frac > 0.8f)
+        g_pair_frac = 0.8f;
+}
+
+void InspectorReloadLayout()
+{
+    g_layout_loaded = false;
+    LoadViewLayout();
 }
 
 enum
@@ -788,23 +851,74 @@ static void DrawSection(const PeFile* pe, int i)
         GoHex(s.rawptr);
 }
 
-static float SplitListW()
+static float SplitListW(float* sz)
 {
-    float avail = ImGui::GetContentRegionAvail().x;
-    float w = avail * kSplitListFrac;
-    float list_min = ThemePx(180.f);
-    float prev_min = ThemePx(160.f);
-    if (w < list_min)
-        w = list_min;
-    if (w + prev_min > avail)
-        w = avail - prev_min;
-    if (w < avail * 0.35f)
-        w = avail * 0.45f;
-    if (w < ThemePx(80.f))
-        w = ThemePx(80.f);
-    if (w > avail - ThemeSpaceSm())
-        w = avail * 0.5f;
-    return w;
+    return UiPersistSplitW("list", sz, kSplitListFrac, ThemePx(80.f), ThemePx(160.f));
+}
+
+static void SplitV(const char* id, float* sz, const char* key, float sign, float min_sz)
+{
+    ImGui::PushID(id);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float h = ImGui::GetContentRegionAvail().y;
+    float hit = ThemeSplitHit();
+    ImGui::InvisibleButton("sp", ImVec2(hit, h));
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    if (hovered || active)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        t = 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    float x = p.x + hit * 0.5f;
+    dl->AddRectFilled(ImVec2(x - 1.f, p.y), ImVec2(x + 1.f, p.y + h),
+        UiLerpCol(ThemeColBorder(), ThemeColAccent(), t));
+    if (active)
+    {
+        *sz += sign * ImGui::GetIO().MouseDelta.x;
+        if (*sz < min_sz)
+            *sz = min_sz;
+    }
+    if (key && key[0] && ImGui::IsItemDeactivated())
+        LayoutSavePx(key, *sz);
+    ImGui::PopID();
+}
+
+static void SplitH(const char* id, float* sz, const char* key, float sign, float min_sz)
+{
+    ImGui::PushID(id);
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    float w = ImGui::GetContentRegionAvail().x;
+    float hit = ThemeSplitHit();
+    ImGui::InvisibleButton("sp", ImVec2(w, hit));
+    bool hovered = ImGui::IsItemHovered();
+    bool active = ImGui::IsItemActive();
+    if (hovered || active)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
+    if (active)
+        t = 1.f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    float y = p.y + hit * 0.5f;
+    dl->AddRectFilled(ImVec2(p.x, y - 1.f), ImVec2(p.x + w, y + 1.f),
+        UiLerpCol(ThemeColBorder(), ThemeColAccent(), t));
+    if (active)
+    {
+        *sz += sign * ImGui::GetIO().MouseDelta.y;
+        if (*sz < min_sz)
+            *sz = min_sz;
+    }
+    if (key && key[0] && ImGui::IsItemDeactivated())
+        LayoutSavePx(key, *sz);
+    ImGui::PopID();
+}
+
+static void SplitListHandle(const char* id, float* sz, const char* key)
+{
+    ImGui::SameLine(0.f, 0.f);
+    SplitV(id, sz, key, 1.f, ThemePx(80.f));
+    ImGui::SameLine(0.f, 0.f);
 }
 
 static void DrawImportDll(const PeFile* pe, int i)
@@ -817,11 +931,14 @@ static void DrawImportDll(const PeFile* pe, int i)
     Field(I18nGet("pe.bound"), d.bound ? I18nGet("pe.yes") : I18nGet("pe.no"), I18nGet("help.fld.bound"));
     FieldU(I18nGet("pe.functions"), d.fns.size(), false);
     ImGui::Spacing();
-    if (!ImGui::BeginTable("impfn", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+    UiTableColDef fn_cols[] = {
+        { "name", I18nGet("pe.field.name"), 0, 0.f },
+        { "hint", I18nGet("pe.col.hint_ord"), 0, 72.f },
+    };
+    if (!UiBeginPersistTable("import_fns", fn_cols, 2,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(I18nGet("pe.field.name"));
-    ImGui::TableSetupColumn(I18nGet("pe.col.hint_ord"));
     ImGui::TableHeadersRow();
     ImGuiListClipper clipper;
     clipper.Begin((int)d.fns.size());
@@ -840,27 +957,31 @@ static void DrawImportDll(const PeFile* pe, int i)
                 ImGui::Text("%u", f.hint);
         }
     }
-    ImGui::EndTable();
+    UiEndPersistTable();
 }
 
 static void DrawSections(const PeFile* pe)
 {
-    ImGui::BeginChild("sec_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("sec_list", ImVec2(SplitListW(&g_split_sec), 0.f), ImGuiChildFlags_Borders);
     if (pe->section_n == 0)
         EmptyHint();
-    else if (ImGui::BeginTable("sect", 5,
-        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-        ImGuiTableFlags_SizingStretchProp))
+    else
     {
-        if (g_sec_sel < 0 || g_sec_sel >= pe->section_n)
-            g_sec_sel = 0;
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.field.name"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.va"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.vsize"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.raw_ptr"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.raw_size"));
-        ImGui::TableHeadersRow();
+        UiTableColDef sec_cols[] = {
+            { "name", I18nGet("pe.field.name"), 0, 0.f },
+            { "va", I18nGet("pe.col.va"), 0, 88.f },
+            { "vsize", I18nGet("pe.col.vsize"), 0, 88.f },
+            { "raw_ptr", I18nGet("pe.col.raw_ptr"), 0, 88.f },
+            { "raw_size", I18nGet("pe.col.raw_size"), 0, 88.f },
+        };
+        if (UiBeginPersistTable("sections", sec_cols, 5,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+            ImGuiTableFlags_SizingStretchProp))
+        {
+            if (g_sec_sel < 0 || g_sec_sel >= pe->section_n)
+                g_sec_sel = 0;
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableHeadersRow();
         for (int i = 0; i < pe->section_n; i++)
         {
             const PeSection& s = pe->sections[i];
@@ -880,10 +1001,11 @@ static void DrawSections(const PeFile* pe)
             ImGui::Text("%08X", s.rawsize);
             ImGui::PopID();
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
+        }
     }
     ImGui::EndChild();
-    ImGui::SameLine();
+    SplitListHandle("sec_sp", &g_split_sec, "split.sections");
     ImGui::BeginChild("sec_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
     if (pe->section_n == 0)
         EmptyHint();
@@ -909,7 +1031,7 @@ static bool ImportDllMatches(const PeImportDll& d, const char* filter)
 static void DrawImports(const PeFile* pe)
 {
     ImGui::InputTextWithHint("##impf", I18nGet("welcome.window_filter"), g_imp_filter, (int)sizeof(g_imp_filter));
-    ImGui::BeginChild("imp_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("imp_list", ImVec2(SplitListW(&g_split_imp), 0.f), ImGuiChildFlags_Borders);
     if (pe->imports.empty())
         EmptyHint();
     int shown = 0;
@@ -935,7 +1057,7 @@ static void DrawImports(const PeFile* pe)
     if (!pe->imports.empty() && shown == 0)
         EmptyHint();
     ImGui::EndChild();
-    ImGui::SameLine();
+    SplitListHandle("imp_sp", &g_split_imp, "split.imports");
     ImGui::BeginChild("imp_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
     if (pe->imports.empty())
         EmptyHint();
@@ -1010,13 +1132,15 @@ static void DrawExports(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (!ImGui::BeginTable("expt", 3,
+    UiTableColDef exp_cols[] = {
+        { "ordinal", I18nGet("pe.col.ordinal"), ImGuiTableColumnFlags_WidthFixed, 80.f },
+        { "name", I18nGet("pe.field.name"), 0, 0.f },
+        { "addr", I18nGet("pe.col.address"), 0, 88.f },
+    };
+    if (!UiBeginPersistTable("exports", exp_cols, 3,
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(I18nGet("pe.col.ordinal"), ImGuiTableColumnFlags_WidthFixed, ThemePx(80.f));
-    ImGui::TableSetupColumn(I18nGet("pe.field.name"));
-    ImGui::TableSetupColumn(I18nGet("pe.col.address"));
     ImGui::TableHeadersRow();
     ImGuiListClipper clipper;
     clipper.Begin((int)idx.size());
@@ -1025,7 +1149,7 @@ static void DrawExports(const PeFile* pe)
         for (int n = clipper.DisplayStart; n < clipper.DisplayEnd; n++)
             DrawExportRow(pe->exports[idx[n]], idx[n]);
     }
-    ImGui::EndTable();
+    UiEndPersistTable();
 }
 
 static void DrawCom(PeFile* pe)
@@ -1312,15 +1436,17 @@ static void DrawChanges()
     ImVec2 sz(0.f, ImGui::GetContentRegionAvail().y);
     if (sz.y < ThemePx(120.f))
         sz.y = ThemePx(120.f);
-    if (!ImGui::BeginTable("patchhist", 6, flags, sz))
+    UiTableColDef patch_cols[] = {
+        { "seq", I18nGet("patch.col.seq"), ImGuiTableColumnFlags_WidthFixed, 56.f },
+        { "addr", I18nGet("patch.col.addr"), 0, 0.f },
+        { "before", I18nGet("patch.col.before"), 0, 0.f },
+        { "after", I18nGet("patch.col.after"), 0, 0.f },
+        { "status", I18nGet("patch.col.status"), 0, 0.f },
+        { "source", I18nGet("patch.col.source"), 0, 0.f },
+    };
+    if (!UiBeginPersistTable("patch_history", patch_cols, 6, flags, sz))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(I18nGet("patch.col.seq"), ImGuiTableColumnFlags_WidthFixed, ThemePx(56.f));
-    ImGui::TableSetupColumn(I18nGet("patch.col.addr"));
-    ImGui::TableSetupColumn(I18nGet("patch.col.before"));
-    ImGui::TableSetupColumn(I18nGet("patch.col.after"));
-    ImGui::TableSetupColumn(I18nGet("patch.col.status"));
-    ImGui::TableSetupColumn(I18nGet("patch.col.source"));
     ImGui::TableHeadersRow();
 
     for (int i = 0; i < (int)hist.size(); i++)
@@ -1392,7 +1518,7 @@ static void DrawChanges()
             GoHex(op.offset);
         ImGui::PopID();
     }
-    ImGui::EndTable();
+    UiEndPersistTable();
 }
 
 static const char* AnalysisKindKey(AnalysisKind k)
@@ -1680,14 +1806,25 @@ static void DrawAnalysisTable(const PeFile* pe, const AnalysisArtifact* art, con
     ImVec2 sz(0.f, ImGui::GetContentRegionAvail().y);
     if (sz.y < ThemePx(120.f))
         sz.y = ThemePx(120.f);
-    if (!ImGui::BeginTable("antab", tb.col_n > 0 ? tb.col_n : 1, flags, sz))
+    UiTableColDef an_cols[AnalysisTableMaxCols];
+    int an_n = tb.col_n > 0 ? tb.col_n : 1;
+    if (an_n > AnalysisTableMaxCols)
+        an_n = AnalysisTableMaxCols;
+    for (int c = 0; c < an_n; c++)
+    {
+        an_cols[c].id = tb.col_i18n[c][0] ? tb.col_i18n[c] : "col";
+        an_cols[c].label = I18nGet(tb.col_i18n[c]);
+        an_cols[c].flags = 0;
+        an_cols[c].def_w = 0.f;
+    }
+    char an_tid[64];
+    snprintf(an_tid, sizeof(an_tid), "analysis.%s", tb.id[0] ? tb.id : "table");
+    if (!UiBeginPersistTable(an_tid, an_cols, an_n, flags, sz))
     {
         ImGui::PopID();
         return;
     }
     ImGui::TableSetupScrollFreeze(0, 1);
-    for (int c = 0; c < tb.col_n; c++)
-        ImGui::TableSetupColumn(I18nGet(tb.col_i18n[c]));
     ImGui::TableHeadersRow();
 
     if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs())
@@ -1784,7 +1921,7 @@ static void DrawAnalysisTable(const PeFile* pe, const AnalysisArtifact* art, con
             }
         }
     }
-    ImGui::EndTable();
+    UiEndPersistTable();
     ImGui::PopID();
 }
 
@@ -1949,7 +2086,7 @@ static void DrawAnalysis(PeFile* pe)
         g_an_root = 0;
 
     const int kMaxTreeChildren = 32;
-    ImGui::BeginChild("an_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("an_list", ImVec2(SplitListW(&g_split_an), 0.f), ImGuiChildFlags_Borders);
 
     std::vector<std::string> groups;
     for (const AnalysisArtifact& root : pe->analysis)
@@ -2007,7 +2144,7 @@ static void DrawAnalysis(PeFile* pe)
         ImGui::PopID();
     }
     ImGui::EndChild();
-    ImGui::SameLine();
+    SplitListHandle("an_sp", &g_split_an, "split.analysis");
     ImGui::BeginChild("an_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
     const AnalysisArtifact* cur = SelectedArtifact(pe);
     if (cur)
@@ -2113,7 +2250,7 @@ static void DrawRsrc(PeFile* pe)
     if (g_rsrc_row < 0 || g_rsrc_row >= rows)
         g_rsrc_row = 0;
 
-    ImGui::BeginChild("rsrc_list", ImVec2(SplitListW(), 0.f), ImGuiChildFlags_Borders);
+    ImGui::BeginChild("rsrc_list", ImVec2(SplitListW(&g_split_rsrc), 0.f), ImGuiChildFlags_Borders);
     if (rows == 0)
         EmptyHint();
     for (int i = 0; i < rows; i++)
@@ -2151,7 +2288,7 @@ static void DrawRsrc(PeFile* pe)
         ImGui::PopID();
     }
     ImGui::EndChild();
-    ImGui::SameLine();
+    SplitListHandle("rsrc_sp", &g_split_rsrc, "split.resources");
     ImGui::BeginChild("rsrc_prev", ImVec2(0.f, 0.f), ImGuiChildFlags_Borders);
     if (g_rsrc_kind == 1)
         DrawVersion(pe);
@@ -2194,14 +2331,17 @@ static void DrawRelocs(const PeFile* pe)
     }
     if (g_reloc_sel < 0 || g_reloc_sel >= (int)pe->relocs.size())
         g_reloc_sel = 0;
-    if (ImGui::BeginTable("relb", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
+    UiTableColDef relb_cols[] = {
+        { "page_rva", I18nGet("pe.col.page_rva"), 0, 88.f },
+        { "size", I18nGet("pe.col.size"), 0, 72.f },
+        { "entries", I18nGet("pe.col.entries"), 0, 72.f },
+        { "hl64", I18nGet("pe.col.hl64"), 0, 88.f },
+    };
+    if (UiBeginPersistTable("reloc_blocks", relb_cols, 4,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
         ImVec2(-1.f, ThemePx(160.f))))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.col.page_rva"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.entries"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.hl64"));
         ImGui::TableHeadersRow();
         for (int i = 0; i < (int)pe->relocs.size(); i++)
         {
@@ -2221,16 +2361,19 @@ static void DrawRelocs(const PeFile* pe)
             ImGui::Text("%u / %u", b.type_highlow, b.type_dir64);
             ImGui::PopID();
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
     }
     const PeRelocBlock& b = pe->relocs[g_reloc_sel];
-    if (ImGui::BeginTable("rele", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+    UiTableColDef rele_cols[] = {
+        { "type", I18nGet("pe.col.type"), 0, 72.f },
+        { "off", I18nGet("pe.col.off"), 0, 56.f },
+        { "rva", I18nGet("pe.col.rva"), 0, 88.f },
+        { "file", I18nGet("pe.col.file"), 0, 88.f },
+    };
+    if (UiBeginPersistTable("reloc_entries", rele_cols, 4,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.col.type"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.off"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.rva"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.file"));
         ImGui::TableHeadersRow();
         int show = (int)b.entries.size();
         if (show > 4096)
@@ -2263,7 +2406,7 @@ static void DrawRelocs(const PeFile* pe)
                 ImGui::PopID();
             }
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
     }
 }
 
@@ -2300,14 +2443,17 @@ static void DrawDebug(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("dbg", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+    UiTableColDef dbg_cols[] = {
+        { "type", I18nGet("pe.col.type"), 0, 0.f },
+        { "time", I18nGet("pe.col.time"), 0, 88.f },
+        { "size", I18nGet("pe.col.size"), 0, 72.f },
+        { "file", I18nGet("pe.col.file"), 0, 88.f },
+        { "extra", I18nGet("pe.col.extra"), 0, 0.f },
+    };
+    if (UiBeginPersistTable("debug", dbg_cols, 5,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.col.type"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.time"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.file"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.extra"));
         ImGui::TableHeadersRow();
         for (const PeDebugEntry& e : pe->debug)
         {
@@ -2323,7 +2469,7 @@ static void DrawDebug(const PeFile* pe)
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(e.extra);
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
     }
 }
 
@@ -2334,13 +2480,16 @@ static void DrawEntropy(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("ent", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+    UiTableColDef ent_cols[] = {
+        { "range", I18nGet("pe.range"), 0, 0.f },
+        { "offset", I18nGet("pe.col.offset"), 0, 88.f },
+        { "size", I18nGet("pe.col.size"), 0, 72.f },
+        { "entropy", I18nGet("pe.entropy"), 0, 72.f },
+    };
+    if (UiBeginPersistTable("entropy", ent_cols, 4,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.range"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.offset"));
-        ImGui::TableSetupColumn(I18nGet("pe.col.size"));
-        ImGui::TableSetupColumn(I18nGet("pe.entropy"));
         ImGui::TableHeadersRow();
         for (const PeEntropyRange& r : pe->entropy)
         {
@@ -2354,7 +2503,7 @@ static void DrawEntropy(const PeFile* pe)
             ImGui::TableNextColumn();
             ImGui::Text("%.3f", r.entropy);
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
     }
 }
 
@@ -2366,12 +2515,15 @@ static void DrawStrings(const PeFile* pe)
         EmptyHint();
         return;
     }
-    if (ImGui::BeginTable("str", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
+    UiTableColDef str_cols[] = {
+        { "off", I18nGet("pe.col.off"), ImGuiTableColumnFlags_WidthFixed, 88.f },
+        { "enc", I18nGet("pe.col.enc"), ImGuiTableColumnFlags_WidthFixed, 44.f },
+        { "text", I18nGet("pe.col.text"), 0, 0.f },
+    };
+    if (UiBeginPersistTable("strings", str_cols, 3,
+        ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn(I18nGet("pe.col.off"), ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
-        ImGui::TableSetupColumn(I18nGet("pe.col.enc"), ImGuiTableColumnFlags_WidthFixed, ThemePx(44.f));
-        ImGui::TableSetupColumn(I18nGet("pe.col.text"));
         ImGui::TableHeadersRow();
         int shown = 0;
         auto draw_str_row = [&](int i)
@@ -2415,7 +2567,7 @@ static void DrawStrings(const PeFile* pe)
                     break;
             }
         }
-        ImGui::EndTable();
+        UiEndPersistTable();
         if (shown == 0)
             EmptyHint();
     }
@@ -2676,16 +2828,18 @@ static void DrawFindings(const PeFile* pe)
     {
         const std::vector<FindingItem>& items = rep.findings;
         ImGui::BeginChild("findsplit", ImVec2(0.f, 0.f), false);
-        float half = ImGui::GetContentRegionAvail().x * 0.48f;
+        float half = UiPersistSplitW("findings", &g_split_find, 0.48f, ThemePx(80.f), ThemePx(160.f));
         ImGui::BeginChild("findlist", ImVec2(half, 0.f), true);
-        if (ImGui::BeginTable("find2", 3,
+        UiTableColDef find_cols[] = {
+            { "severity", I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, 88.f },
+            { "category", I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, 112.f },
+            { "title", I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+        };
+        if (UiBeginPersistTable("findings", find_cols, 3,
             ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
             ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
         {
             ImGui::TableSetupScrollFreeze(0, 1);
-            ImGui::TableSetupColumn(I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
-            ImGui::TableSetupColumn(I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, ThemePx(112.f));
-            ImGui::TableSetupColumn(I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableHeadersRow();
             ImGuiListClipper clip;
             clip.Begin((int)items.size());
@@ -2710,10 +2864,10 @@ static void DrawFindings(const PeFile* pe)
                     ImGui::PopID();
                 }
             }
-            ImGui::EndTable();
+            UiEndPersistTable();
         }
         ImGui::EndChild();
-        ImGui::SameLine();
+        SplitListHandle("find_sp", &g_split_find, "split.findings");
         ImGui::BeginChild("finddetail", ImVec2(0.f, 0.f), true);
         if (g_find_sel >= 0 && g_find_sel < (int)items.size())
             DrawFindingDetail(pe, items[(size_t)g_find_sel]);
@@ -2725,16 +2879,18 @@ static void DrawFindings(const PeFile* pe)
     }
 
     // Legacy fallback
-    if (!ImGui::BeginTable("find", 4,
+    UiTableColDef find_legacy[] = {
+        { "severity", I18nGet("pe.severity"), ImGuiTableColumnFlags_WidthFixed, 72.f },
+        { "category", I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, 110.f },
+        { "title", I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+        { "why", I18nGet("pe.why"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+    };
+    if (!UiBeginPersistTable("findings_legacy", find_legacy, 4,
         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
         ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV |
         ImGuiTableFlags_Sortable))
         return;
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(I18nGet("pe.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
-    ImGui::TableSetupColumn(I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, ThemePx(110.f));
-    ImGui::TableSetupColumn(I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn(I18nGet("pe.why"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
     ImGuiListClipper clip;
     clip.Begin((int)pe->findings.size());
@@ -2787,7 +2943,7 @@ static void DrawFindings(const PeFile* pe)
             ImGui::PopID();
         }
     }
-    ImGui::EndTable();
+    UiEndPersistTable();
 }
 
 static void DrawDetail(PeFile* pe)
@@ -3153,64 +3309,6 @@ static void FillCons()
     ConsoleViewDraw();
 }
 
-static void SplitV(const char* id, float* sz, const char* key, float sign)
-{
-    ImGui::PushID(id);
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    float h = ImGui::GetContentRegionAvail().y;
-    float hit = ThemeSplitHit();
-    ImGui::InvisibleButton("sp", ImVec2(hit, h));
-    bool hovered = ImGui::IsItemHovered();
-    bool active = ImGui::IsItemActive();
-    if (hovered || active)
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
-    if (active)
-        t = 1.f;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    float x = p.x + hit * 0.5f;
-    dl->AddRectFilled(ImVec2(x - 1.f, p.y), ImVec2(x + 1.f, p.y + h),
-        UiLerpCol(ThemeColBorder(), ThemeColAccent(), t));
-    if (active)
-    {
-        *sz += sign * ImGui::GetIO().MouseDelta.x;
-        if (*sz < ThemeTreeMinW())
-            *sz = ThemeTreeMinW();
-    }
-    if (ImGui::IsItemDeactivated())
-        SettingsSetInt(key, (int)*sz);
-    ImGui::PopID();
-}
-
-static void SplitH(const char* id, float* sz, const char* key, float sign)
-{
-    ImGui::PushID(id);
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    float w = ImGui::GetContentRegionAvail().x;
-    float hit = ThemeSplitHit();
-    ImGui::InvisibleButton("sp", ImVec2(w, hit));
-    bool hovered = ImGui::IsItemHovered();
-    bool active = ImGui::IsItemActive();
-    if (hovered || active)
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-    float t = UiHoverT(ImGui::GetItemID(), hovered || active);
-    if (active)
-        t = 1.f;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    float y = p.y + hit * 0.5f;
-    dl->AddRectFilled(ImVec2(p.x, y - 1.f), ImVec2(p.x + w, y + 1.f),
-        UiLerpCol(ThemeColBorder(), ThemeColAccent(), t));
-    if (active)
-    {
-        *sz += sign * ImGui::GetIO().MouseDelta.y;
-        if (*sz < ThemePx(72.f))
-            *sz = ThemePx(72.f);
-    }
-    if (ImGui::IsItemDeactivated())
-        SettingsSetInt(key, (int)*sz);
-    ImGui::PopID();
-}
-
 static void HostPane(const char* id, ImVec2 sz, int which)
 {
     ImGui::BeginChild(id, sz, ImGuiChildFlags_Borders);
@@ -3226,15 +3324,48 @@ static void HostPair(const char* id, ImVec2 sz, int a, int b, bool stack_vert)
     ImGui::BeginChild(id, sz, ImGuiChildFlags_None);
     if (stack_vert)
     {
-        float h = ImGui::GetContentRegionAvail().y * 0.5f;
+        float avail = ImGui::GetContentRegionAvail().y;
+        float h = avail * g_pair_frac;
+        if (h < ThemePx(72.f))
+            h = ThemePx(72.f);
+        if (h > avail - ThemePx(72.f))
+            h = avail - ThemePx(72.f);
         HostPane("p0", ImVec2(0.f, h), a);
+        SplitH("pair", &h, nullptr, 1.f, ThemePx(72.f));
+        if (avail > 1.f)
+        {
+            g_pair_frac = h / avail;
+            if (g_pair_frac < 0.2f)
+                g_pair_frac = 0.2f;
+            if (g_pair_frac > 0.8f)
+                g_pair_frac = 0.8f;
+            if (ImGui::IsItemDeactivated())
+                SettingsLayoutSet("split.dock_pair", g_pair_frac);
+        }
         HostPane("p1", ImVec2(0.f, 0.f), b);
     }
     else
     {
-        float w = ImGui::GetContentRegionAvail().x * 0.5f;
+        float avail = ImGui::GetContentRegionAvail().x;
+        float w = avail * g_pair_frac;
+        if (w < ThemePx(80.f))
+            w = ThemePx(80.f);
+        if (w > avail - ThemePx(80.f))
+            w = avail - ThemePx(80.f);
         HostPane("p0", ImVec2(w, 0.f), a);
         ImGui::SameLine(0.f, 0.f);
+        SplitV("pair", &w, nullptr, 1.f, ThemePx(80.f));
+        ImGui::SameLine(0.f, 0.f);
+        if (avail > 1.f)
+        {
+            g_pair_frac = w / avail;
+            if (g_pair_frac < 0.2f)
+                g_pair_frac = 0.2f;
+            if (g_pair_frac > 0.8f)
+                g_pair_frac = 0.8f;
+            if (ImGui::IsItemDeactivated())
+                SettingsLayoutSet("split.dock_pair", g_pair_frac);
+        }
         HostPane("p1", ImVec2(0.f, 0.f), b);
     }
     ImGui::EndChild();
@@ -3388,7 +3519,12 @@ void InspectorDraw()
         mid_h = ThemePx(64.f);
 
     if (top)
+    {
         DockStrip(DockTop, true);
+        float* tsz = (g_tree_on && g_tree_dock == DockTop) ? &g_tree_sz : &g_cons_sz;
+        const char* tkey = (g_tree_on && g_tree_dock == DockTop) ? "panel.tree" : "panel.console";
+        SplitH("tsplit", tsz, tkey, 1.f, ThemePx(72.f));
+    }
 
     ImGui::BeginChild("mid", ImVec2(av.x, mid_h), ImGuiChildFlags_None);
     bool left = (g_tree_on && g_tree_dock == DockLeft) || (g_cons_on && g_cons_dock == DockLeft);
@@ -3398,8 +3534,8 @@ void InspectorDraw()
         DockStrip(DockLeft, false);
         ImGui::SameLine(0.f, 0.f);
         float* sz = (g_tree_on && g_tree_dock == DockLeft) ? &g_tree_sz : &g_cons_sz;
-        const char* key = (g_tree_on && g_tree_dock == DockLeft) ? "view.tree_w" : "view.console_h";
-        SplitV("lsplit", sz, key, 1.f);
+        const char* key = (g_tree_on && g_tree_dock == DockLeft) ? "panel.tree" : "panel.console";
+        SplitV("lsplit", sz, key, 1.f, ThemeTreeMinW());
         ImGui::SameLine(0.f, 0.f);
     }
 
@@ -3427,8 +3563,8 @@ void InspectorDraw()
     {
         ImGui::SameLine(0.f, 0.f);
         float* sz = (g_tree_on && g_tree_dock == DockRight) ? &g_tree_sz : &g_cons_sz;
-        const char* key = (g_tree_on && g_tree_dock == DockRight) ? "view.tree_w" : "view.console_h";
-        SplitV("rsplit", sz, key, -1.f);
+        const char* key = (g_tree_on && g_tree_dock == DockRight) ? "panel.tree" : "panel.console";
+        SplitV("rsplit", sz, key, -1.f, ThemeTreeMinW());
         ImGui::SameLine(0.f, 0.f);
         DockStrip(DockRight, false);
     }
@@ -3437,8 +3573,8 @@ void InspectorDraw()
     if (bot)
     {
         float* sz = (g_cons_on && g_cons_dock == DockBottom) ? &g_cons_sz : &g_tree_sz;
-        const char* key = (g_cons_on && g_cons_dock == DockBottom) ? "view.console_h" : "view.tree_w";
-        SplitH("bsplit", sz, key, -1.f);
+        const char* key = (g_cons_on && g_cons_dock == DockBottom) ? "panel.console" : "panel.tree";
+        SplitH("bsplit", sz, key, -1.f, ThemePx(72.f));
         DockStrip(DockBottom, true);
     }
 

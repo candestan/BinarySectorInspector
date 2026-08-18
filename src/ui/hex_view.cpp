@@ -5,6 +5,7 @@
 #include "i18n/i18n.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "persist/settings.h"
 
 #include "imgui.h"
 // credit: https://github.com/ocornut/imgui_club
@@ -35,6 +36,7 @@ struct PatByte
 
 static MemoryEditor g_ed;
 static bool g_primed;
+static int g_hex_epoch = -1;
 static size_t g_goto = (size_t)-1;
 static size_t g_anchor = (size_t)-1;
 static size_t g_sel_end = (size_t)-1;
@@ -453,10 +455,24 @@ void HexViewDraw()
         return;
     }
 
+    if (g_hex_epoch != SettingsLayoutEpoch())
+    {
+        g_primed = false;
+        g_hex_epoch = SettingsLayoutEpoch();
+    }
     if (!g_primed)
     {
         g_ed.ReadOnly = false;
-        g_ed.OptShowDataPreview = true;
+        g_ed.OptShowDataPreview = SettingsLayoutGetBool("hex.preview", true);
+        g_ed.Cols = SettingsLayoutGetInt("hex.cols", 16);
+        if (g_ed.Cols < 4)
+            g_ed.Cols = 4;
+        if (g_ed.Cols > 32)
+            g_ed.Cols = 32;
+        g_ed.OptShowAscii = SettingsLayoutGetBool("hex.ascii", true);
+        g_ed.OptShowHexII = SettingsLayoutGetBool("hex.hexii", false);
+        g_ed.OptGreyOutZeroes = SettingsLayoutGetBool("hex.grey_zeroes", true);
+        g_ed.OptUpperCaseHex = SettingsLayoutGetBool("hex.uppercase", true);
         g_ed.WriteFn = OnWrite;
         g_ed.BgColorFn = OnBg;
         g_primed = true;
@@ -582,4 +598,11 @@ void HexViewDraw()
         ImGui::PopFont();
 
     UpdateSelFromMouse();
+
+    SettingsLayoutSetInt("hex.cols", g_ed.Cols);
+    SettingsLayoutSetBool("hex.ascii", g_ed.OptShowAscii);
+    SettingsLayoutSetBool("hex.hexii", g_ed.OptShowHexII);
+    SettingsLayoutSetBool("hex.grey_zeroes", g_ed.OptGreyOutZeroes);
+    SettingsLayoutSetBool("hex.uppercase", g_ed.OptUpperCaseHex);
+    SettingsLayoutSetBool("hex.preview", g_ed.OptShowDataPreview);
 }

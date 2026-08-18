@@ -773,7 +773,13 @@ void ConsoleViewDraw()
 
     ImGuiTableFlags tf = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
         ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV;
-    if (!ImGui::BeginTable("logtbl", 4, tf))
+    UiTableColDef log_cols[] = {
+        { "time", I18nGet("log.col.time"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowTime() ? 64.f : 0.f },
+        { "level", I18nGet("log.col.level"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowLevel() ? 52.f : 0.f },
+        { "source", I18nGet("log.col.source"), ImGuiTableColumnFlags_WidthFixed, LogSettingsShowSource() ? 140.f : 0.f },
+        { "message", I18nGet("log.col.message"), ImGuiTableColumnFlags_WidthStretch, 0.f },
+    };
+    if (!UiBeginPersistTable("console", log_cols, 4, tf))
     {
         HandleConsoleKeys();
         ImGui::EndChild();
@@ -787,19 +793,6 @@ void ConsoleViewDraw()
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
-    if (LogSettingsShowTime())
-        ImGui::TableSetupColumn(I18nGet("log.col.time"), ImGuiTableColumnFlags_WidthFixed, ThemePx(64.f));
-    else
-        ImGui::TableSetupColumn("##t", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    if (LogSettingsShowLevel())
-        ImGui::TableSetupColumn(I18nGet("log.col.level"), ImGuiTableColumnFlags_WidthFixed, ThemePx(52.f));
-    else
-        ImGui::TableSetupColumn("##l", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    if (LogSettingsShowSource())
-        ImGui::TableSetupColumn(I18nGet("log.col.source"), ImGuiTableColumnFlags_WidthFixed, ThemePx(140.f));
-    else
-        ImGui::TableSetupColumn("##s", ImGuiTableColumnFlags_WidthFixed, 0.f);
-    ImGui::TableSetupColumn(I18nGet("log.col.message"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
 
     if (ImFont* mono = ThemeFontMono())
@@ -911,7 +904,7 @@ void ConsoleViewDraw()
 
     if (ThemeFontMono())
         ImGui::PopFont();
-    ImGui::EndTable();
+    UiEndPersistTable();
 
     HandleConsoleKeys();
     ImGui::EndChild();

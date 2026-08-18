@@ -1,5 +1,6 @@
 #include "app/settings_page.h"
 #include "app/app.h"
+#include "app/inspector.h"
 #include "ui/theme.h"
 #include "ui/theme_pack.h"
 #include "ui/icons.h"
@@ -178,6 +179,38 @@ static void DrawGeneral()
     ImGui::PopStyleColor();
     if (ThemeFontSmall())
         ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(I18nGet("settings.layout.title"));
+    if (ImFont* sm = ThemeFontSmall())
+        ImGui::PushFont(sm);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+    ImGui::TextUnformatted(I18nGet("settings.layout.hint"));
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    if (ThemeFontSmall())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    if (UiButton(I18nGet("settings.layout.reset")))
+        ImGui::OpenPopup("reset_layout");
+    if (UiBeginPopup("reset_layout"))
+    {
+        ImGui::TextWrapped("%s", I18nGet("settings.layout.reset_confirm"));
+        ImGui::Spacing();
+        if (UiButton(I18nGet("settings.layout.reset_ok"), ImVec2(0.f, 0.f), 1))
+        {
+            SettingsLayoutResetWorkspace();
+            InspectorReloadLayout();
+            UiToastPush(UiToastInfo, I18nGet("toast.layout.reset"), nullptr);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (UiButton(I18nGet("settings.back")))
+            ImGui::CloseCurrentPopup();
+        UiEndPopup();
+    }
 }
 
 static ID3D11ShaderResourceView* g_bsi_icon_srv;
