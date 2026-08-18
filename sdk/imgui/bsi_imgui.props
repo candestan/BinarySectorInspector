@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Import from a plugin vcxproj:
+       <Import Project="..\..\sdk\imgui\bsi_imgui.props" />
+       Then #include "imgui.h" and call ImGui:: in ViewDraw / DrawSettings. -->
+  <PropertyGroup>
+    <BsiRoot Condition="'$(BsiRoot)'==''">$(MSBuildThisFileDirectory)..\..\</BsiRoot>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(BsiRoot)sdk\imgui;$(BsiRoot)third_party\imgui;$(BsiRoot)third_party\imgui\misc\freetype;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>IMGUI_USER_CONFIG="bsi_imconfig.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(BsiRoot)x64\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>bsi_imgui.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

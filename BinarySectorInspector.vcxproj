@@ -43,10 +43,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;IMGUI_USER_CONFIG="bsi_imconfig.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <ResourceCompile>
@@ -69,10 +69,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;IMGUI_USER_CONFIG="bsi_imconfig.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
@@ -142,21 +142,30 @@
     <ClCompile Include="third_party\kuara_dynamic\src\rule_parser.cpp" />
     <ClCompile Include="third_party\kuara_dynamic\src\rule_validator.cpp" />
     <ClCompile Include="src\platform\window_process.cpp" />
-    <ClCompile Include="third_party\imgui\imgui.cpp" />
-    <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
-    <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
-    <ClCompile Include="third_party\imgui\imgui_widgets.cpp" />
     <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp" />
-    <ClCompile Include="third_party\imgui\misc\freetype\imgui_freetype.cpp" />
     <ClCompile Include="third_party\imnodes\imnodes.cpp">
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>false</SDLCheck>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="third_party\msvc\freetype.vcxproj">
-      <Project>{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}</Project>
+    <ProjectReference Include="third_party\msvc\bsi_imgui.vcxproj">
+      <Project>{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}</Project>
+    </ProjectReference>
+    <ProjectReference Include="plugins\lydis\Lydis.vcxproj">
+      <Project>{7C4E91A2-5B8D-4F13-9E27-A6C0D1B3E845}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="plugins\decompsnake\DecompSnake.vcxproj">
+      <Project>{B1A2C3D4-1111-2222-3333-444455556666}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+      <Private>false</Private>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
@@ -204,6 +213,8 @@
   <ItemGroup>
     <None Include="sdk\plugin\README.md" />
     <None Include="sdk\plugin\skeleton.c" />
+    <None Include="sdk\plugin\skeleton_imgui.cpp" />
+    <None Include="sdk\imgui\README.md" />
   </ItemGroup>
   <ItemGroup>
     <LanguageJson Include="languages\*.json" />

@@ -156,25 +156,10 @@
     <ClCompile Include="src\platform\window_process.cpp">
       <Filter>platform</Filter>
     </ClCompile>
-    <ClCompile Include="third_party\imgui\imgui.cpp">
-      <Filter>third_party</Filter>
-    </ClCompile>
-    <ClCompile Include="third_party\imgui\imgui_draw.cpp">
-      <Filter>third_party</Filter>
-    </ClCompile>
-    <ClCompile Include="third_party\imgui\imgui_tables.cpp">
-      <Filter>third_party</Filter>
-    </ClCompile>
-    <ClCompile Include="third_party\imgui\imgui_widgets.cpp">
-      <Filter>third_party</Filter>
-    </ClCompile>
     <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp">
       <Filter>third_party</Filter>
     </ClCompile>
     <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp">
-      <Filter>third_party</Filter>
-    </ClCompile>
-    <ClCompile Include="third_party\imgui\misc\freetype\imgui_freetype.cpp">
       <Filter>third_party</Filter>
     </ClCompile>
     <ClCompile Include="third_party\imnodes\imnodes.cpp">

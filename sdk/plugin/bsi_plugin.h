@@ -117,8 +117,9 @@ struct BsiVisuals
 };
 
 // Host-drawn widgets (Level 1). Prefer these. id must be unique within the plugin.
-// Level 2: ui->imgui / ui->imnodes are the host contexts for this callback only.
-// Bind them if the plugin compiles its own imgui.cpp / imnodes.cpp (same pin and flags).
+// Level 2: link bsi_imgui.dll and call ImGui:: in this callback. ui->imgui is the
+// host ImGuiContext* (already current on the UI thread). ui->imnodes is for
+// plugins that compile their own imnodes.cpp.
 struct BsiUi
 {
     uint32_t size;
@@ -145,8 +146,10 @@ struct BsiUi
     void (*end_disabled)(void* ctx);
     void (*tooltip)(void* ctx, const char* text);
 
-    // Level 2 UI: host ImGui / imnodes contexts for this callback only.
-    // UI thread. Bind before calling ImGui:: / ImNodes:: from a plugin-compiled copy.
+    // Level 2 UI: host ImGuiContext* / ImNodesContext* for this callback.
+    // ImGui: link bsi_imgui.dll (do not compile imgui.cpp). Context is already
+    // current; SetCurrentContext(ui->imgui) is still safe.
+    // imnodes: compile host-pinned imnodes.cpp and bind ui->imnodes.
     // Probe with BSI_UI_HAS(ui, imgui).
     void* imgui;   // ImGuiContext*
     void* imnodes; // ImNodesContext* (may be null)

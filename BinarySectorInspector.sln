@@ -10,6 +10,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BinarySectorInspector", "Bi
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "freetype", "third_party\msvc\freetype.vcxproj", "{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bsi_imgui", "third_party\msvc\bsi_imgui.vcxproj", "{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DecompSnake", "plugins\decompsnake\DecompSnake.vcxproj", "{B1A2C3D4-1111-2222-3333-444455556666}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DecompSnakeCli", "plugins\decompsnake\DecompSnakeCli.vcxproj", "{C2B3D4E5-2222-3333-4444-555566667777}"
@@ -30,6 +32,10 @@ Global
 		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Debug|x64.Build.0 = Debug|x64
 		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Release|x64.ActiveCfg = Release|x64
 		{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}.Release|x64.Build.0 = Release|x64
+		{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}.Debug|x64.ActiveCfg = Debug|x64
+		{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}.Debug|x64.Build.0 = Debug|x64
+		{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}.Release|x64.ActiveCfg = Release|x64
+		{E4F8A1B2-3C5D-4E6F-8A90-1B2C3D4E5F60}.Release|x64.Build.0 = Release|x64
 		{B1A2C3D4-1111-2222-3333-444455556666}.Debug|x64.ActiveCfg = Debug|x64
 		{B1A2C3D4-1111-2222-3333-444455556666}.Debug|x64.Build.0 = Debug|x64
 		{B1A2C3D4-1111-2222-3333-444455556666}.Release|x64.ActiveCfg = Release|x64

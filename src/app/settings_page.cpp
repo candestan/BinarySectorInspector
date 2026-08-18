@@ -45,6 +45,9 @@ enum
     SettingsTabScripting,
     SettingsTabAbout,
     SettingsTabLicenses,
+#ifdef _DEBUG
+    SettingsTabTest,
+#endif
 };
 
 static void DetectReapplyOpenFile()
@@ -213,43 +216,11 @@ static void DrawGeneral()
     }
 }
 
-static ID3D11ShaderResourceView* g_bsi_icon_srv;
-static int g_bsi_icon_w;
-static int g_bsi_icon_h;
-static bool g_bsi_icon_tried;
-
-static ID3D11ShaderResourceView* BsiIconTex()
+static void DrawBrandPlaceholder(ImDrawList* dl, ImVec2 img0, ImVec2 img1)
 {
-    if (!g_bsi_icon_tried)
-    {
-        g_bsi_icon_tried = true;
-        char path[MAX_PATH];
-        PathsAssetFile(path, MAX_PATH, "app.ico");
-        TexLoadFile(path, &g_bsi_icon_srv, &g_bsi_icon_w, &g_bsi_icon_h);
-    }
-    return g_bsi_icon_srv;
-}
-
-static void DrawPurpleSkull(ImDrawList* dl, ImVec2 c, float scale)
-{
-    if (!dl || scale < 4.f)
-        return;
-    const ImU32 col = IM_COL32(168, 96, 240, 220);
-    const ImU32 dark = IM_COL32(72, 32, 120, 255);
-    dl->AddCircleFilled(c, scale, col, 28);
-    dl->AddRectFilled(ImVec2(c.x - scale * 0.58f, c.y + scale * 0.12f),
-        ImVec2(c.x + scale * 0.58f, c.y + scale * 0.92f), col);
-    dl->AddCircleFilled(ImVec2(c.x - scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
-    dl->AddCircleFilled(ImVec2(c.x + scale * 0.34f, c.y - scale * 0.12f), scale * 0.20f, dark, 12);
-    dl->AddTriangleFilled(
-        ImVec2(c.x, c.y + scale * 0.08f),
-        ImVec2(c.x - scale * 0.12f, c.y + scale * 0.28f),
-        ImVec2(c.x + scale * 0.12f, c.y + scale * 0.28f), dark);
-    for (int i = -2; i <= 2; i++)
-    {
-        float x = c.x + (float)i * scale * 0.17f;
-        dl->AddLine(ImVec2(x, c.y + scale * 0.42f), ImVec2(x, c.y + scale * 0.78f), dark, 1.6f);
-    }
+    dl->AddRectFilled(img0, img1, ThemeColInput());
+    ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f);
+    IconDrawRole(IconImage, c, IconRoleXl, ThemeColMuted(), dl);
 }
 
 static void DrawKuaraPlaceholder(ImDrawList* dl, ImVec2 img0, ImVec2 img1)
@@ -268,30 +239,22 @@ static void DrawKuaraPlaceholder(ImDrawList* dl, ImVec2 img0, ImVec2 img1)
 static void DrawEngineBrand(DetectEngineKind kind, ImDrawList* dl, ImVec2 img0, ImVec2 img1)
 {
     if (kind == DetectEngineInternal)
-    {
-        ID3D11ShaderResourceView* icon = BsiIconTex();
-        if (icon)
-            dl->AddImage(ImTextureRef((void*)icon), img0, img1);
-        else
-        {
-            dl->AddRectFilled(img0, img1, ThemeColInput());
-            IconDrawRole(IconShield, ImVec2((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.5f),
-                IconRoleLg, ThemeColAccent());
-        }
-        ImVec2 c((img0.x + img1.x) * 0.5f, (img0.y + img1.y) * 0.52f);
-        DrawPurpleSkull(dl, c, (img1.x - img0.x) * 0.22f);
-        return;
-    }
-    DrawKuaraPlaceholder(dl, img0, img1);
+        DrawBrandPlaceholder(dl, img0, img1);
+    else
+        DrawKuaraPlaceholder(dl, img0, img1);
 }
 
 static void DrawEngineInfoRow(const char* label, const char* value)
 {
+    float x = ImGui::GetCursorPosX();
+    float y = ImGui::GetCursorPosY();
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
     ImGui::TextUnformatted(label);
     ImGui::PopStyleColor();
-    ImGui::SameLine(ThemePx(148.f));
-    ImGui::TextWrapped("%s", value && value[0] ? value : "-");
+    ImGui::SetCursorPos(ImVec2(x + ThemePx(140.f), y));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+    ImGui::TextUnformatted(value && value[0] ? value : "-");
+    ImGui::PopTextWrapPos();
 }
 
 static bool DrawEngineOption(DetectEngineKind kind, DetectEngineKind active, float card_w, float card_h, float img_h)
@@ -356,20 +319,19 @@ static void DrawDetectionEngineSettings()
     float info_w = card_w * 2.f + gap;
     if (info_w > ImGui::GetContentRegionAvail().x)
         info_w = ImGui::GetContentRegionAvail().x;
-    ImVec2 panel_p = ImGui::GetCursorScreenPos();
-    ImGui::Dummy(ImVec2(info_w, ThemePx(248.f)));
-    ImVec2 panel_q(panel_p.x + info_w, panel_p.y + ThemePx(248.f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceMd(), ThemeSpaceMd()));
+    ImGui::BeginChild("engine_info", ImVec2(info_w, 0.f),
+        ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
+    float img = ThemePx(128.f);
+    ImVec2 img0 = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(img, img));
+    ImVec2 img1 = ImGui::GetItemRectMax();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddRectFilled(panel_p, panel_q, ThemeColCard());
-    dl->AddRect(panel_p, panel_q, ThemeColBorder());
-
-    ImVec2 img0(panel_p.x + 12.f, panel_p.y + 12.f);
-    ImVec2 img1(panel_p.x + 12.f + ThemePx(128.f), panel_p.y + 12.f + ThemePx(128.f));
     DrawEngineBrand(active, dl, img0, img1);
     dl->AddRect(img0, img1, ThemeColBorder());
-
-    ImGui::SetCursorScreenPos(ImVec2(img1.x + 16.f, panel_p.y + 14.f));
+    ImGui::SameLine(0.f, ThemeSpaceMd());
     ImGui::BeginGroup();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
     if (ImFont* t = ThemeFontTitle())
         ImGui::PushFont(t);
     ImGui::TextUnformatted(I18nGet(info.name_key));
@@ -380,15 +342,16 @@ static void DrawDetectionEngineSettings()
     if (!info.brand_url || !info.brand_url[0])
         ImGui::TextWrapped("%s", I18nGet("settings.detection.engine.image_pending"));
     ImGui::PopStyleColor();
+    ImGui::PopTextWrapPos();
     ImGui::EndGroup();
-
-    ImGui::SetCursorScreenPos(ImVec2(panel_p.x + 12.f, img1.y + 16.f));
+    ImGui::Spacing();
     DrawEngineInfoRow(I18nGet("settings.detection.engine.id"), info.id);
     DrawEngineInfoRow(I18nGet("settings.detection.engine.version"), info.version);
     DrawEngineInfoRow(I18nGet("settings.detection.engine.author"), info.author);
     DrawEngineInfoRow(I18nGet("settings.detection.engine.status"),
         I18nGet(info.ready ? "settings.detection.engine.ready" : "settings.detection.engine.not_ready"));
-    ImGui::SetCursorScreenPos(ImVec2(panel_p.x, panel_q.y + ThemeSpaceSm()));
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
 }
 
 static void DrawDetectionSettings()
@@ -446,13 +409,42 @@ static void DrawDetectionSettings()
     {
         DetectReload();
         DetectReapplyOpenFile();
+        DetectLoadStats after = DetectStats();
+        char body[192];
+        snprintf(body, sizeof(body), I18nGet("toast.sig.reload.body"),
+            after.total, after.invalid, after.collisions);
+        UiToastType ty = (after.invalid > 0 || after.collisions > 0) ? UiToastWarning : UiToastSuccess;
+        UiToastPush(ty, I18nGet("toast.sig.reload.title"), body);
     }
     ImGui::SameLine();
     if (UiButton(I18nGet("settings.detection.open_user"), ImVec2(ThemePx(220.f), 0)))
-        DetectOpenUserDir();
+    {
+        if (DetectOpenUserDir())
+            UiToastPush(UiToastSuccess, I18nGet("toast.sig.folder.ok.title"), DetectUserDir());
+        else
+            UiToastPush(UiToastError, I18nGet("toast.sig.folder.fail.title"),
+                I18nGet("toast.sig.folder.fail.body"));
+    }
     ImGui::SameLine();
     if (UiButton(I18nGet("settings.detection.validate"), ImVec2(ThemePx(200.f), 0)))
+    {
         DetectReload();
+        DetectReapplyOpenFile();
+        DetectLoadStats after = DetectStats();
+        char body[192];
+        if (after.invalid == 0 && after.collisions == 0)
+        {
+            snprintf(body, sizeof(body), I18nGet("toast.sig.validate.ok.body"), after.total);
+            UiToastPush(UiToastSuccess, I18nGet("toast.sig.validate.ok.title"), body);
+        }
+        else
+        {
+            snprintf(body, sizeof(body), I18nGet("toast.sig.validate.bad.body"),
+                after.invalid, after.collisions, after.total);
+            UiToastPush(after.invalid > 0 ? UiToastError : UiToastWarning,
+                I18nGet("toast.sig.validate.bad.title"), body);
+        }
+    }
 }
 
 static void DrawPerformance()
@@ -870,18 +862,35 @@ static void DrawPluginFilterPopup()
     UiEndPopup();
 }
 
+static bool BeginPluginSettingsModal(const char* name)
+{
+    UiPushPopupMetrics();
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(ThemePx(280.f), 0.f), ImVec2(ThemePx(420.f), ThemePx(520.f)));
+    bool open = ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    if (!open)
+    {
+        UiPopPopupMetrics();
+        return false;
+    }
+    UiPopupFadePush();
+    return true;
+}
+
 static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
 {
     ImGui::PushID(i);
+    ImGui::BeginGroup();
     ImVec2 p0 = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("card", ImVec2(cell_w, cell_h));
-    ImVec2 after = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(cell_w, cell_h));
     ImVec2 p1 = ImGui::GetItemRectMax();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     bool on = PluginEnabled(i);
+    bool hover = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(p0, p1, false);
     dl->AddRectFilled(p0, p1, ThemeColCard());
     dl->AddRect(p0, p1, on ? ThemeColBorder() : ThemeColBorderA(0.55f), 0.f, 0, 1.f);
-    UiHoverSweep(p0, p1, UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered()));
+    UiHoverSweep(p0, p1, UiHoverT(ImGui::GetItemID(), hover));
 
     ImVec2 img0(p0.x + 10.f, p0.y + 10.f);
     ImVec2 img1(p0.x + cell_w - 10.f, p0.y + 10.f + img_h);
@@ -925,17 +934,13 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
     bool en = on;
     if (UiCheckbox("en", I18nGet("plugin.enabled"), &en) && en != on)
         PluginSetEnabled(i, en);
+    char modal[160];
+    snprintf(modal, sizeof(modal), "%s###pset", PluginName(i));
     if (PluginHasSettings(i))
     {
         ImGui::SameLine();
         if (UiButton(I18nGet("settings.plugins.settings")))
-            ImGui::OpenPopup("pset");
-        if (UiBeginPopup("pset"))
-        {
-            ImGui::SetNextItemWidth(ThemePx(280.f));
-            PluginDrawSettings(i);
-            UiEndPopup();
-        }
+            ImGui::OpenPopup(modal);
     }
     else if (PluginEnabled(i) && !PluginInited(i))
     {
@@ -945,8 +950,20 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
         ImGui::PopStyleColor();
     }
     ImGui::EndGroup();
-    ImGui::SetCursorScreenPos(after);
-    ImGui::Dummy(ImVec2(0.f, 0.f));
+
+    if (BeginPluginSettingsModal(modal))
+    {
+        ImGui::SetNextItemWidth(-1.f);
+        PluginDrawSettings(i);
+        ImGui::Spacing();
+        if (UiButton(I18nGet("settings.back"), ImVec2(-1.f, 0.f)))
+            ImGui::CloseCurrentPopup();
+        UiEndPopup();
+    }
+
+    ImGui::SetCursorScreenPos(p0);
+    ImGui::Dummy(ImVec2(cell_w, cell_h));
+    ImGui::EndGroup();
     ImGui::PopID();
 }
 
@@ -993,20 +1010,32 @@ static void DrawPlugins()
         return;
     }
 
-    float cell_w = ThemePx(280.f);
-    float img_h = ThemePx(140.f);
-    float cell_h = ThemePx(296.f);
+    float min_w = ThemePx(260.f);
     float gap = ThemePx(16.f);
     float avail = ImGui::GetContentRegionAvail().x;
-    int cols = (int)((avail + gap) / (cell_w + gap));
+    int cols = (int)((avail + gap) / (min_w + gap));
     if (cols < 1)
         cols = 1;
-    for (int k = 0; k < nv; k++)
+
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(gap * 0.5f, gap * 0.5f));
+    if (ImGui::BeginTable("plug_grid", cols,
+            ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_NoPadOuterX))
     {
-        if (k % cols != 0)
-            ImGui::SameLine(0.f, gap);
-        DrawPluginCard(vis[k], cell_w, cell_h, img_h);
+        for (int k = 0; k < nv; k++)
+        {
+            ImGui::TableNextColumn();
+            float cell_w = ImGui::GetContentRegionAvail().x;
+            float img_h = cell_w * 0.5f;
+            if (img_h < ThemePx(96.f))
+                img_h = ThemePx(96.f);
+            if (img_h > ThemePx(180.f))
+                img_h = ThemePx(180.f);
+            float cell_h = img_h + ThemePx(156.f);
+            DrawPluginCard(vis[k], cell_w, cell_h, img_h);
+        }
+        ImGui::EndTable();
     }
+    ImGui::PopStyleVar();
 }
 
 static char g_py2_path[MAX_PATH];
@@ -1505,6 +1534,65 @@ static void DrawLicenses()
     ImGui::TextWrapped("%s", I18nGet("third_party.snippets"));
 }
 
+#ifdef _DEBUG
+static int g_test_toast_i = -1;
+static double g_test_toast_next;
+
+static void TestToastTick()
+{
+    if (g_test_toast_i < 0)
+        return;
+    double now = ImGui::GetTime();
+    if (now < g_test_toast_next)
+        return;
+    struct Item
+    {
+        UiToastType type;
+        const char* title;
+        const char* body;
+    };
+    static const Item k[] = {
+        { UiToastSuccess, "toast.test.success.title", "toast.test.success.body" },
+        { UiToastInfo,    "toast.test.info.title",    "toast.test.info.body" },
+        { UiToastWarning, "toast.test.warning.title", "toast.test.warning.body" },
+        { UiToastError,   "toast.test.error.title",   "toast.test.error.body" },
+    };
+    const int n = (int)(sizeof(k) / sizeof(k[0]));
+    if (g_test_toast_i >= n)
+    {
+        g_test_toast_i = -1;
+        return;
+    }
+    const Item& it = k[g_test_toast_i];
+    UiToastPush(it.type, I18nGet(it.title), I18nGet(it.body));
+    g_test_toast_i++;
+    if (g_test_toast_i >= n)
+        g_test_toast_i = -1;
+    else
+        g_test_toast_next = now + 0.9;
+}
+
+static void DrawTest()
+{
+    if (ImFont* title = ThemeFontTitle())
+        ImGui::PushFont(title);
+    ImGui::TextUnformatted(I18nGet("settings.test"));
+    if (ThemeFontTitle())
+        ImGui::PopFont();
+    ImGui::Spacing();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextWrapped("%s", I18nGet("settings.test_hint"));
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+    UiSection(I18nGet("settings.test.toasts"));
+    if (UiButton(I18nGet("settings.test.send_all"), ImVec2(ThemePx(220.f), 0.f), 1))
+    {
+        g_test_toast_i = 0;
+        g_test_toast_next = 0.0;
+    }
+}
+#endif
+
 void SettingsPageDraw()
 {
     float enter = UiEnter(0.f, 0.32f);
@@ -1540,6 +1628,10 @@ void SettingsPageDraw()
         g_tab = SettingsTabAbout;
     if (NavTab("tab_lic", I18nGet("settings.third_party"), g_tab == SettingsTabLicenses))
         g_tab = SettingsTabLicenses;
+#ifdef _DEBUG
+    if (NavTab("tab_test", I18nGet("settings.test"), g_tab == SettingsTabTest))
+        g_tab = SettingsTabTest;
+#endif
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("settings_body", ImVec2(0.f, 0.f), ImGuiChildFlags_None);
@@ -1559,8 +1651,15 @@ void SettingsPageDraw()
         DrawAbout();
     else if (g_tab == SettingsTabLicenses)
         DrawLicenses();
+#ifdef _DEBUG
+    else if (g_tab == SettingsTabTest)
+        DrawTest();
+#endif
     else
         DrawGeneral();
     ImGui::EndChild();
+#ifdef _DEBUG
+    TestToastTick();
+#endif
     ImGui::PopStyleVar();
 }

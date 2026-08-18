@@ -4,6 +4,7 @@ Plugins are ordinary Windows x64 DLLs. Core never lists plugin ids in source. Pu
 
 ```
 {BinarySectorInspector.exe}
+  bsi_imgui.dll               # host ImGui runtime; Level 2 plugins import this
   plugins\
     myplugin.dll              # loaded
     other\
@@ -12,13 +13,13 @@ Plugins are ordinary Windows x64 DLLs. Core never lists plugin ids in source. Pu
       com.example.myplugin\   # writable dir from host->path(..., "data")
 ```
 
-No project reference, no `#include` of plugin code, no rebuild of the inspector.
+Third-party plugins need no project reference, no `#include` of plugin code, and no rebuild of the inspector. Bundled plugins (`plugins/lydis`, `plugins/decompsnake`) are host ProjectReferences so building the inspector also builds those DLLs and copies them into `{OutDir}plugins\`. The EXE still does not link plugin `.lib`s.
 
 ## Ship a plugin
 
 1. Copy `bsi_plugin.h` into the plugin repo. Do not include BSI `src/`.
 2. Export `BsiPluginGetInfo`, `BsiPluginInit`, `BsiPluginShutdown`.
-3. Build a DLL. Level 1 UI does not need ImGui. Level 2 UI compiles the host-pinned `imgui.cpp` / `imnodes.cpp` and binds the host contexts (see below). Do not link the inspector EXE.
+3. Build a DLL. Level 1 UI does not need ImGui. Level 2 UI links `bsi_imgui.dll` (import `sdk/imgui/bsi_imgui.props`) and draws with `ImGui::` in view/settings callbacks. Do not compile `imgui.cpp`. Do not link the inspector EXE.
 4. Copy the DLL to `{exe}/plugins/` (or a one-level subfolder).
 5. Start BinarySectorInspector. Settings → Plugins shows a card per DLL (search/filter by name, package id, author). Optional icon/cover paths come from `BsiPluginVisuals`, `plugin.json` / `tool.json`, or `icon.png` / `cover.png` next to the DLL.
 
@@ -57,27 +58,39 @@ The host loads a plugin when `BSI_PLUGIN_ABI_MIN <= info->abi_version <= BSI_PLU
 
 Draw callbacks run on the UI thread.
 
-Level 1: use `BsiUi` widgets. Do not call ImGui from the plugin.
+Level 1: use `BsiUi` widgets. No ImGui needed.
 
-Level 2: bind the host ImGui / imnodes contexts, then call ImGui and ImNodes as usual. Native plugins are trusted in-process code, not a sandbox.
+Level 2: link the host `bsi_imgui.dll` and call `ImGui::` directly. Native plugins are trusted in-process code, not a sandbox. Do not compile `imgui.cpp` in the plugin.
 
-```c
-if (BSI_UI_HAS(ui, imgui) && ui->imgui)
+```cpp
+#include "bsi_plugin.h"
+#include "imgui.h"
+
+BSI_PLUGIN_EXPORT int BsiPluginViewDraw(int index, const BsiUi* ui)
 {
-    ImGuiMemAllocFunc alloc_fn = 0;
-    ImGuiMemFreeFunc free_fn = 0;
-    void* user = 0;
-    if (BSI_HOST_HAS(host, imgui_get_allocators))
-        host->imgui_get_allocators(host->ctx, (void**)&alloc_fn, (void**)&free_fn, &user);
-    if (alloc_fn && free_fn)
-        ImGui::SetAllocatorFunctions(alloc_fn, free_fn, user);
-    ImGui::SetCurrentContext((ImGuiContext*)ui->imgui);
-    if (BSI_UI_HAS(ui, imnodes) && ui->imnodes)
-        ImNodes::SetCurrentContext((ImNodesContext*)ui->imnodes);
+    if (index != 0 || !ui)
+        return 0;
+    if (BSI_UI_HAS(ui, imgui) && ui->imgui)
+        ImGui::SetCurrentContext((ImGuiContext*)ui->imgui);
+    ImGui::TextUnformatted("hello");
+    return 1;
 }
 ```
 
-Compile flags must match the host (`host->imgui_compile_flags`): currently `IMGUI_USE_WCHAR32` and `IMGUI_ENABLE_FREETYPE`. Use the same Dear ImGui and imnodes commits as `third_party/imgui` and `third_party/imnodes`. Do not Begin/End host windows. Do not keep `ImGuiContext*` after the callback returns. Do not call ImGui or ImNodes from worker threads.
+Import `sdk/imgui/bsi_imgui.props` so include paths, `IMGUI_USER_CONFIG`, and `bsi_imgui.lib` match the host. `bsi_imgui.dll` already sits next to the exe; Windows resolves it when the plugin loads.
+
+`SetCurrentContext` is optional during a host draw callback (the form context is already current inside `bsi_imgui.dll`) but keep it. Do not `CreateContext` / `NewFrame` / `Render`. Do not compile Win32/DX backends. Do not keep `ImGuiContext*` after the callback returns. Do not call ImGui from worker threads.
+
+Compile flags are in `sdk/imgui/bsi_imconfig.h` (`IMGUI_USE_WCHAR32`, `IMGUI_ENABLE_FREETYPE`). Probe `host->imgui_compile_flags` / `host->imgui_version` if you need to assert the pin.
+
+imnodes is still compiled into the host EXE. A plugin that wants `ImNodes::` compiles the host-pinned `imnodes.cpp` and binds `ui->imnodes`:
+
+```c
+if (BSI_UI_HAS(ui, imnodes) && ui->imnodes)
+    ImNodes::SetCurrentContext((ImNodesContext*)ui->imnodes);
+```
+
+`sdk/plugin/skeleton.c` is Level 1. `sdk/plugin/skeleton_imgui.cpp` is Level 2.
 
 `BsiHost` is the current HostContext. New services are appended to `BsiHost` / `BsiUi` (size/version probe). Nested service tables (`BsiBinaryApi`, `BsiPatchApi`, …) are planned; they are not a breaking ABI yet. Do not freeze a DLL ABI until static providers have used the same contracts.
 

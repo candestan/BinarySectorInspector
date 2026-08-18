@@ -24,7 +24,7 @@ The default MSBuild does not download dependencies. After submodules are initial
 4. Proprietary SDK headers/libs/binaries only when redistribution allows it.
 5. Prebuilt open-source `.lib`/`.dll` only as a documented last resort.
 
-Generated `.lib`/`.obj`/`.dll` belong in `x64/` (gitignored). Runtime DLLs, if any, must be copied by the build. FreeType is linked statically (`/MT`), so no runtime DLL copy is required.
+Generated `.lib`/`.obj`/`.dll` belong in `x64/` (gitignored). Runtime DLLs, if any, must be copied by the build. `bsi_imgui.dll` is produced next to the exe. FreeType is linked statically (`/MT`) into `bsi_imgui.dll`.
 
 Do not bump submodule commits casually. Upgrades are deliberate.
 
@@ -32,7 +32,7 @@ Do not bump submodule commits casually. Upgrades are deliberate.
 
 | Dependency | Pin | Integration | License | Purpose |
 | --- | --- | --- | --- | --- |
-| Dear ImGui | `46d39d56febc2a00bdd2270dc88c8a13f2a0441a` (`v1.92.9b-20-g46d39d56f`) | Git submodule `third_party/imgui`. App compiles selected `.cpp` files; `IMGUI_USE_WCHAR32` and `IMGUI_ENABLE_FREETYPE` are project preprocessor defines, not edits to `imconfig.h`. | MIT (`third_party/imgui/LICENSE.txt`) | UI |
+| Dear ImGui | `46d39d56febc2a00bdd2270dc88c8a13f2a0441a` (`v1.92.9b-20-g46d39d56f`) | Git submodule `third_party/imgui`. Shared runtime `bsi_imgui.dll` (`third_party/msvc/bsi_imgui.vcxproj`) compiles `imgui*.cpp` + `imgui_freetype.cpp`. Host and plugins dllimport it. Compile options live in `sdk/imgui/bsi_imconfig.h` (`IMGUI_USE_WCHAR32`, `IMGUI_ENABLE_FREETYPE`). Win32/DX11 backends stay in the host EXE. | MIT (`third_party/imgui/LICENSE.txt`) | UI |
 | imgui_club | `a436e793fe44a2c8e827bfcbf138fcbe11940476` | Git submodule `third_party/imgui_club`. Header-only `imgui_memory_editor`. | MIT (`third_party/imgui_club/LICENSE.txt`) | Hex editor widget |
 | imnodes | `eb36902c892548ef94f88f51ad7e7c9c7058a71c` | Git submodule `third_party/imnodes`. App compiles `imnodes.cpp`. Host creates a per-form `ImNodesContext` and exposes it to plugins through `BsiHost` / `BsiUi`. | MIT (`third_party/imnodes/LICENSE.md`) | Node editor widget ([Nelarius/imnodes](https://github.com/Nelarius/imnodes)) |
 | nlohmann/json | `cdf52ae9bef77a0844e02e42df6d2df83a55c4b9` (`v3.11.3-474-gcdf52ae9b`) | Git submodule `third_party/nlohmann_json`. Include `single_include`. | MIT (`third_party/nlohmann_json/LICENSE.MIT`) | settings, i18n, theme JSON |
