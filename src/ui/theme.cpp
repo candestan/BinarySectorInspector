@@ -70,7 +70,7 @@ float ThemeTooltipPad() { return ThemePx(10.f); }
 float ThemeToastWidth() { return ThemePx(340.f); }
 float ThemeToastGap() { return ThemePx(8.f); }
 float ThemeToastAccentW() { return ThemePx(3.f); }
-float ThemeBadgePadX() { return ThemePx(7.f); }
+float ThemeBadgePadX() { return ThemePx(8.f); }
 float ThemeBadgePadY() { return ThemePx(3.f); }
 float ThemeBadgeGap() { return ThemePx(6.f); }
 float ThemeBadgeIconGap() { return ThemePx(4.f); }

@@ -83,6 +83,7 @@ static float g_split_imp;
 static float g_split_an;
 static float g_split_rsrc;
 static float g_split_find;
+static float g_split_start_here;
 static float g_pair_frac = 0.5f;
 
 static float g_sel_bar_y = -1.f;
@@ -158,6 +159,7 @@ static void LoadViewLayout()
     g_split_an = SettingsLayoutHas("split.analysis") ? LayoutPx("split.analysis", 220.f) : 0.f;
     g_split_rsrc = SettingsLayoutHas("split.resources") ? LayoutPx("split.resources", 220.f) : 0.f;
     g_split_find = SettingsLayoutHas("split.findings") ? LayoutPx("split.findings", 280.f) : 0.f;
+    g_split_start_here = SettingsLayoutHas("split.start_here") ? LayoutPx("split.start_here", 0.f) : 0.f;
     g_pair_frac = SettingsLayoutGet("split.dock_pair", 0.5f);
     if (g_pair_frac < 0.2f)
         g_pair_frac = 0.2f;
@@ -455,25 +457,18 @@ static void FieldU(const char* k, uint64_t v, bool hex, const char* help = nullp
 
 static bool Node(const char* id, const char* label, int icon, bool leaf, bool dirty)
 {
-    // TreeNodeEx + leaf/selected flags
-    // credit: https://github.com/ocornut/imgui (third_party/imgui, MIT)
     bool sel = strcmp(g_sel, id) == 0;
     if (strcmp(id, "rsrc") == 0 && (strcmp(g_sel, "ver") == 0 || strcmp(g_sel, "icons") == 0 || strcmp(g_sel, "com") == 0))
         sel = true;
-    ImGuiTreeNodeFlags f = ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding;
-    if (leaf)
-        f |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-    if (sel)
-        f |= ImGuiTreeNodeFlags_Selected;
-    char lab[160];
-    IconPrefixLabel(lab, (int)sizeof(lab), IconRoleSm, label);
-    bool open = ImGui::TreeNodeEx(id, f, "%s", lab);
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+    ImGui::PushID(id);
+    float h = ImGui::GetTextLineHeight() + ThemePx(12.f);
+    float w = ImGui::GetContentRegionAvail().x;
+    if (ImGui::Selectable("##n", sel, 0, ImVec2(w, h)))
         InspectorSelect(id);
+    UiHandIfHovered();
     ImVec2 a = ImGui::GetItemRectMin();
     ImVec2 b = ImGui::GetItemRectMax();
-    float h = b.y - a.y;
-    float pad = ImGui::GetTreeNodeToLabelSpacing();
+    float row_h = b.y - a.y;
     float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || sel);
     UiHoverSweep(a, b, ht);
     if (sel)
@@ -483,26 +478,35 @@ static bool Node(const char* id, const char* label, int icon, bool leaf, bool di
         if (g_sel_bar_y < 0.f || !UiAnimEnabled())
         {
             g_sel_bar_y = a.y;
-            g_sel_bar_h = h;
+            g_sel_bar_h = row_h;
         }
         else
         {
             float k = 1.f - expf(-18.f * ImGui::GetIO().DeltaTime);
             g_sel_bar_y += (a.y - g_sel_bar_y) * k;
-            g_sel_bar_h += (h - g_sel_bar_h) * k;
+            g_sel_bar_h += (row_h - g_sel_bar_h) * k;
         }
     }
     float s = IconSize(IconRoleSm);
-    IconDraw(icon, ImVec2(a.x + pad + s, a.y + h * 0.5f), s,
+    float gap = IconTextGap();
+    float left = ThemeSpaceSm();
+    ImVec2 ts = ImGui::CalcTextSize(label);
+    float text_y = a.y + (row_h - ts.y) * 0.5f;
+    float icon_y = a.y + row_h * 0.5f;
+    IconDraw(icon, ImVec2(a.x + left + s, icon_y), s,
         sel ? ThemeColAccent() : UiLerpCol(ThemeColMuted(), ThemeColAccent(), ht));
+    ImGui::GetWindowDrawList()->AddText(ImVec2(a.x + left + s * 2.f + gap, text_y),
+        ThemeColFg(), label);
     if (dirty)
     {
         float pulse = UiAnimEnabled() ? 0.55f + 0.45f * (0.5f + 0.5f * sinf((float)ImGui::GetTime() * 5.f)) : 1.f;
         ImU32 dc = ThemeWithAlpha(ThemeColAccent(), pulse);
-        ImGui::GetWindowDrawList()->AddText(ImVec2(b.x - 18.f, a.y + (h - ImGui::GetFontSize()) * 0.5f),
+        ImGui::GetWindowDrawList()->AddText(ImVec2(b.x - 18.f, a.y + (row_h - ImGui::GetFontSize()) * 0.5f),
             dc, "!");
     }
-    return open;
+    ImGui::PopID();
+    (void)leaf;
+    return false;
 }
 
 static bool RsrcBtn(const char* id, const char* label, int kind, bool dirty, float width)
@@ -901,7 +905,7 @@ static void SplitV(const char* id, float* sz, const char* key, float sign, float
     ImGui::PopID();
 }
 
-static void SplitH(const char* id, float* sz, const char* key, float sign, float min_sz)
+static void SplitH(const char* id, float* sz, const char* key, float sign, float min_sz, float max_sz = 0.f)
 {
     ImGui::PushID(id);
     ImVec2 p = ImGui::GetCursorScreenPos();
@@ -924,6 +928,8 @@ static void SplitH(const char* id, float* sz, const char* key, float sign, float
         *sz += sign * ImGui::GetIO().MouseDelta.y;
         if (*sz < min_sz)
             *sz = min_sz;
+        if (max_sz > min_sz && *sz > max_sz)
+            *sz = max_sz;
     }
     if (key && key[0] && ImGui::IsItemDeactivated())
         LayoutSavePx(key, *sz);
@@ -2839,11 +2845,11 @@ static ImU32 FindingSeverityCol(FindingSeverity sev)
 {
     switch (sev)
     {
-    case FindSevCritical: return ThemeColDanger();
-    case FindSevHigh: return ThemeColWarning();
-    case FindSevMedium: return ThemeColInfo();
-    case FindSevLow: return ThemeColFg();
-    default: return ThemeColMuted();
+    case FindSevCritical: return ThemeColRgb(0xC96A6A);
+    case FindSevHigh:     return ThemeColRgb(0xD4A45A);
+    case FindSevMedium:   return ThemeColRgb(0x6A9DC2);
+    case FindSevLow:      return ThemeColRgb(0x8F9AA3);
+    default:              return ThemeColMuted();
     }
 }
 
@@ -2940,6 +2946,31 @@ static void DrawFindings(const PeFile* pe)
     if (rep.summary.start_here_n > 0)
     {
         UiSection(I18nGet("finding.start_here"));
+        float row_h = ImGui::GetFrameHeight();
+        int vis = 0;
+        for (int i = 0; i < rep.summary.start_here_n; i++)
+        {
+            int idx = rep.summary.start_here[i];
+            if (idx >= 0 && idx < (int)rep.findings.size())
+                vis++;
+        }
+        float min_h = row_h * 2.f + ThemeSpaceXs();
+        float def_h = row_h * (float)vis + ThemeSpaceXs() * 2.f;
+        if (def_h < min_h)
+            def_h = min_h;
+        if (g_split_start_here < min_h)
+            g_split_start_here = def_h;
+        float rest_min = ThemePx(140.f);
+        float avail = ImGui::GetContentRegionAvail().y;
+        float max_h = avail - rest_min - ThemeSplitHit();
+        if (max_h < min_h)
+            max_h = min_h;
+        if (g_split_start_here > max_h)
+            g_split_start_here = max_h;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, ThemeSpaceXs()));
+        ImGui::BeginChild("start_here", ImVec2(0.f, g_split_start_here), ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleVar();
         for (int i = 0; i < rep.summary.start_here_n; i++)
         {
             int idx = rep.summary.start_here[i];
@@ -2947,27 +2978,35 @@ static void DrawFindings(const PeFile* pe)
                 continue;
             const FindingItem& f = rep.findings[(size_t)idx];
             ImGui::PushID(1000 + idx);
-            float h = ImGui::GetFrameHeight();
             ImVec2 p = ImGui::GetCursorScreenPos();
             float w = ImGui::GetContentRegionAvail().x;
             bool sel = (g_find_sel == idx);
-            if (ImGui::Selectable("##sh", sel, 0, ImVec2(w, h)))
+            if (ImGui::Selectable("##sh", sel, 0, ImVec2(w, row_h)))
                 g_find_sel = idx;
             UiHandIfHovered();
-            float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || sel);
             ImVec2 q = ImGui::GetItemRectMax();
-            UiHoverSweep(p, q, ht);
-            UiAccentBar(p, q, sel ? 1.f : ht);
+            float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || sel);
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            if (sel)
+                dl->AddRectFilled(p, q, ThemeColSelection());
+            else if (ht > 0.02f)
+                dl->AddRectFilled(p, q, ThemeWithAlpha(ThemeColHover(), ht * 0.55f));
+            if (sel)
+                UiAccentBar(p, q, 1.f);
             float s = IconSize(IconRoleSm);
-            IconDraw(IconGo, ImVec2(p.x + ThemeSpaceXs() + s, p.y + h * 0.5f), s, ThemeColAccent());
+            float gap = IconTextGap();
             char line[256];
             snprintf(line, sizeof(line), "%d. %s", i + 1, FindingText(f.title_key));
-            ImGui::GetWindowDrawList()->AddText(
-                ImVec2(p.x + IconSlotW(IconRoleSm), p.y + (h - ImGui::GetFontSize()) * 0.5f),
-                ThemeColAccent(), line);
+            ImVec2 ts = ImGui::CalcTextSize(line);
+            float text_y = p.y + (row_h - ts.y) * 0.5f;
+            float icon_y = p.y + row_h * 0.5f;
+            IconDraw(IconGo, ImVec2(p.x + s, icon_y), s,
+                sel ? ThemeColAccent() : ThemeColMuted(), dl);
+            dl->AddText(ImVec2(p.x + s * 2.f + gap, text_y), ThemeColFg(), line);
             ImGui::PopID();
         }
-        ImGui::Spacing();
+        ImGui::EndChild();
+        SplitH("start_here_sp", &g_split_start_here, "split.start_here", 1.f, min_h, max_h);
     }
 
     if (!rep.findings.empty())
@@ -2976,12 +3015,16 @@ static void DrawFindings(const PeFile* pe)
         ImGui::BeginChild("findsplit", ImVec2(0.f, 0.f), false);
         float half = UiPersistSplitW("findings", &g_split_find, 0.48f, ThemePx(80.f), ThemePx(160.f));
         ImGui::BeginChild("findlist", ImVec2(half, 0.f), true);
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(ThemeSpaceSm(), ThemePx(8.f)));
         UiTableColDef find_cols[] = {
-            { "severity", I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, 108.f },
-            { "category", I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, 120.f },
+            { "severity", I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, 120.f },
+            { "category", I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, 168.f },
             { "title", I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch, 0.f },
         };
-        if (UiBeginPersistTable("findings", find_cols, 3,
+        float row_h = ImGui::GetFrameHeight();
+        if (row_h < UiBadgeHeight() + ThemePx(8.f))
+            row_h = UiBadgeHeight() + ThemePx(8.f);
+        if (UiBeginPersistTable("findings_v2", find_cols, 3,
             ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
             ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
         {
@@ -2995,27 +3038,31 @@ static void DrawFindings(const PeFile* pe)
                 {
                     const FindingItem& f = items[(size_t)i];
                     ImGui::PushID(i);
-                    ImGui::TableNextRow();
+                    ImGui::TableNextRow(ImGuiTableRowFlags_None, row_h);
                     ImGui::TableNextColumn();
                     bool sel = (g_find_sel == i);
                     if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
-                        ImVec2(0.f, UiBadgeHeight())))
+                        ImVec2(0.f, row_h)))
                         g_find_sel = i;
-                    ImGui::SameLine(0.f, 0.f);
+                    ImVec2 ra = ImGui::GetItemRectMin();
+                    ImVec2 rb = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddRectFilled(ra, ImVec2(ra.x + ThemePx(3.f), rb.y),
+                        ThemeWithAlpha(FindingSeverityCol(f.severity), 0.90f));
+                    ImGui::SameLine(0.f, ThemeSpaceSm());
                     UiBadge("sev", I18nGet(FindingSeverityKey(f.severity)), FindingSeverityCol(f.severity), nullptr);
                     ImGui::TableNextColumn();
                     UiBadge("cat", I18nGet(FindingCategoryKey(f.category)), ThemeColMuted(), nullptr);
                     ImGui::TableNextColumn();
-                    float bh = UiBadgeHeight();
                     float th = ImGui::GetTextLineHeight();
-                    if (bh > th)
-                        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + floorf((bh - th) * 0.5f));
+                    if (row_h > th)
+                        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + floorf((row_h - th) * 0.5f));
                     ImGui::TextUnformatted(FindingText(f.title_key));
                     ImGui::PopID();
                 }
             }
             UiEndPersistTable();
         }
+        ImGui::PopStyleVar();
         ImGui::EndChild();
         SplitListHandle("find_sp", &g_split_find, "split.findings");
         ImGui::BeginChild("finddetail", ImVec2(0.f, 0.f), true);
@@ -3474,12 +3521,22 @@ static void FillCons()
 
 static void HostPane(const char* id, ImVec2 sz, int which)
 {
-    ImGui::BeginChild(id, sz, ImGuiChildFlags_Borders);
+    if (which == 0)
+    {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceSm(), ThemeSpaceSm()));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(10.f), ThemeSpaceXs()));
+    }
+    ImGuiChildFlags flags = ImGuiChildFlags_Borders;
+    if (which == 0)
+        flags |= ImGuiChildFlags_AlwaysUseWindowPadding;
+    ImGui::BeginChild(id, sz, flags);
     if (which == 0)
         FillTree();
     else
         FillCons();
     ImGui::EndChild();
+    if (which == 0)
+        ImGui::PopStyleVar(2);
 }
 
 static void HostPair(const char* id, ImVec2 sz, int a, int b, bool stack_vert)

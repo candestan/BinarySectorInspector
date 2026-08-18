@@ -34,10 +34,15 @@ Do not bump submodule commits casually. Upgrades are deliberate.
 | --- | --- | --- | --- | --- |
 | Dear ImGui | `46d39d56febc2a00bdd2270dc88c8a13f2a0441a` (`v1.92.9b-20-g46d39d56f`) | Git submodule `third_party/imgui`. App compiles selected `.cpp` files; `IMGUI_USE_WCHAR32` and `IMGUI_ENABLE_FREETYPE` are project preprocessor defines, not edits to `imconfig.h`. | MIT (`third_party/imgui/LICENSE.txt`) | UI |
 | imgui_club | `a436e793fe44a2c8e827bfcbf138fcbe11940476` | Git submodule `third_party/imgui_club`. Header-only `imgui_memory_editor`. | MIT (`third_party/imgui_club/LICENSE.txt`) | Hex editor widget |
+| imnodes | `eb36902c892548ef94f88f51ad7e7c9c7058a71c` | Git submodule `third_party/imnodes`. App compiles `imnodes.cpp`. Host creates a per-form `ImNodesContext` and exposes it to plugins through `BsiHost` / `BsiUi`. | MIT (`third_party/imnodes/LICENSE.md`) | Node editor widget ([Nelarius/imnodes](https://github.com/Nelarius/imnodes)) |
 | nlohmann/json | `cdf52ae9bef77a0844e02e42df6d2df83a55c4b9` (`v3.11.3-474-gcdf52ae9b`) | Git submodule `third_party/nlohmann_json`. Include `single_include`. | MIT (`third_party/nlohmann_json/LICENSE.MIT`) | settings, i18n, theme JSON |
 | FreeType | `42608f77f20749dd6ddc9e0536788eaad70ea4b5` (tag `VER-2-13-3`) | Git submodule `third_party/freetype` (GitHub mirror of [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype)). Built from source by first-party `third_party/msvc/freetype.vcxproj`. Output `freetype.lib` is generated, not committed. | FTL or GPLv2 (`third_party/freetype/LICENSE.TXT`, `docs/FTL.TXT`, `docs/GPLv2.TXT`) | Color emoji / `imgui_freetype` |
+| KUARA-Dynamic | submodule `third_party/kuara_dynamic` | Detection engine. BSI compiles selected sources and talks to it through `src/detect/kuara_adapter.cpp`. Do not treat KUARA as a UI plugin. | Attribution-NonSale (`third_party/kuara_dynamic/LICENSE`) | Signature matching engine |
 
 imgui `misc/freetype` is part of the Dear ImGui submodule, not a separate dependency.
+
+`plugins/decompsnake` is a first-party plugin submodule (not under `third_party/`). License: Attribution-NonSale (`plugins/decompsnake/LICENSE`).
+`plugins/lydis` is a plugin submodule (https://github.com/Septillioner/bsi-lydis).
 
 ## First-party build wrappers
 

@@ -28,7 +28,7 @@ float IconSize(int role)
 
 float IconTextGap()
 {
-    return ThemePx(6.f);
+    return ThemePx(10.f);
 }
 
 float IconSlotW(int role)
@@ -47,8 +47,8 @@ void IconPrefixLabel(char* dst, int cap, int role, const char* label)
     int n = (int)(need / spw + 0.99f);
     if (n < 2)
         n = 2;
-    if (n > 8)
-        n = 8;
+    if (n > 14)
+        n = 14;
     int i = 0;
     while (i < n && i < cap - 1)
         dst[i++] = ' ';
@@ -180,7 +180,7 @@ static bool IconDrawEmoji(int icon, ImVec2 c, float s, unsigned int col, ImDrawL
         return false;
     float fs = s * 1.85f;
     ImVec2 ts = font->CalcTextSizeA(fs, 1e10f, 0.f, em);
-    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f - ThemePx(1.5f)), col, em);
+    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), col, em);
     return true;
 }
 

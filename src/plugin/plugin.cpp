@@ -14,6 +14,7 @@
 #include "ui/tex.h"
 
 #include "imgui.h"
+#include "imnodes.h"
 #include <nlohmann/json.hpp>
 
 #include <windows.h>
@@ -913,6 +914,40 @@ static void RecToast(void*, int type, const char* title, const char* body)
     UiToastPush(t, title, body);
 }
 
+static void* RecImguiContext(void*)
+{
+    return ImGui::GetCurrentContext();
+}
+
+static void RecImguiAllocators(void*, void** alloc_fn, void** free_fn, void** user_data)
+{
+    ImGuiMemAllocFunc a = nullptr;
+    ImGuiMemFreeFunc fr = nullptr;
+    void* user = nullptr;
+    ImGui::GetAllocatorFunctions(&a, &fr, &user);
+    if (alloc_fn)
+        *alloc_fn = (void*)a;
+    if (free_fn)
+        *free_fn = (void*)fr;
+    if (user_data)
+        *user_data = user;
+}
+
+static const char* RecImguiVersion(void*)
+{
+    return ImGui::GetVersion();
+}
+
+static const char* RecImguiCompileFlags(void*)
+{
+    return "IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE";
+}
+
+static void* RecImnodesContext(void*)
+{
+    return ImNodes::GetCurrentContext();
+}
+
 static void UiLabel(void*, const char* text)
 {
     if (text)
@@ -1074,6 +1109,8 @@ static void FillUi(BsiUi* ui)
     ui->begin_disabled = UiBeginDisabled;
     ui->end_disabled = UiEndDisabled;
     ui->tooltip = UiTip;
+    ui->imgui = ImGui::GetCurrentContext();
+    ui->imnodes = ImNodes::GetCurrentContext();
 }
 
 static void FillHost(PluginRec* p)
@@ -1139,6 +1176,11 @@ static void FillHost(PluginRec* p)
     p->host.off_to_rva = RecOffToRva;
     p->host.hex_cursor = RecHexCursor;
     p->host.toast = RecToast;
+    p->host.imgui_context = RecImguiContext;
+    p->host.imgui_get_allocators = RecImguiAllocators;
+    p->host.imgui_version = RecImguiVersion;
+    p->host.imgui_compile_flags = RecImguiCompileFlags;
+    p->host.imnodes_context = RecImnodesContext;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

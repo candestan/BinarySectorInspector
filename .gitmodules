@@ -19,3 +19,6 @@
 [submodule "third_party/kuara_dynamic"]
 	path = third_party/kuara_dynamic
 	url = https://github.com/candestan/KUARA-Dynamic.git
+[submodule "third_party/imnodes"]
+	path = third_party/imnodes
+	url = https://github.com/Nelarius/imnodes.git

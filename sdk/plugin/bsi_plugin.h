@@ -116,8 +116,9 @@ struct BsiVisuals
     const char* cover; // wide card image
 };
 
-// Host-drawn widgets. Do not link ImGui in the plugin; call these during
-// BsiPluginDrawSettings / BsiPluginViewDraw. id must be unique within the plugin.
+// Host-drawn widgets (Level 1). Prefer these. id must be unique within the plugin.
+// Level 2: ui->imgui / ui->imnodes are the host contexts for this callback only.
+// Bind them if the plugin compiles its own imgui.cpp / imnodes.cpp (same pin and flags).
 struct BsiUi
 {
     uint32_t size;
@@ -143,6 +144,12 @@ struct BsiUi
     void (*begin_disabled)(void* ctx, int disabled);
     void (*end_disabled)(void* ctx);
     void (*tooltip)(void* ctx, const char* text);
+
+    // Level 2 UI: host ImGui / imnodes contexts for this callback only.
+    // UI thread. Bind before calling ImGui:: / ImNodes:: from a plugin-compiled copy.
+    // Probe with BSI_UI_HAS(ui, imgui).
+    void* imgui;   // ImGuiContext*
+    void* imnodes; // ImNodesContext* (may be null)
 };
 
 struct BsiHost
@@ -231,6 +238,14 @@ struct BsiHost
     int  (*off_to_rva)(void* ctx, uint32_t file_off, uint32_t* rva);
     int  (*hex_cursor)(void* ctx, uint32_t* file_off, uint32_t* size);
     void (*toast)(void* ctx, int type, const char* title, const char* body);
+
+    // HostContext UI backends. Valid on the UI thread. imgui_context may be
+    // null during Init if no form is current. Probe with BSI_HOST_HAS.
+    void* (*imgui_context)(void* ctx);
+    void  (*imgui_get_allocators)(void* ctx, void** alloc_fn, void** free_fn, void** user_data);
+    const char* (*imgui_version)(void* ctx);
+    const char* (*imgui_compile_flags)(void* ctx);
+    void* (*imnodes_context)(void* ctx);
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.

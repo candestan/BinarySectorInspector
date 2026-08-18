@@ -46,7 +46,7 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <ResourceCompile>
@@ -72,7 +72,7 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;IMGUI_USE_WCHAR32;IMGUI_ENABLE_FREETYPE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
@@ -149,6 +149,10 @@
     <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="third_party\imgui\backends\imgui_impl_dx11.cpp" />
     <ClCompile Include="third_party\imgui\misc\freetype\imgui_freetype.cpp" />
+    <ClCompile Include="third_party\imnodes\imnodes.cpp">
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="third_party\msvc\freetype.vcxproj">
@@ -192,6 +196,7 @@
     <ClInclude Include="third_party\imgui\imconfig.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="third_party\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="third_party\imnodes\imnodes.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\app\app.rc" />

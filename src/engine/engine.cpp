@@ -52,7 +52,7 @@ static bool RecreateDevice(bool sw)
         Form* f = &g_forms[i];
         if (!f->live || !f->imgui)
             continue;
-        ImGui::SetCurrentContext(f->imgui);
+        BindFormUi(f);
         ImGui_ImplDX11_Shutdown();
         UnbindFormGpu(f);
     }
@@ -67,7 +67,7 @@ static bool RecreateDevice(bool sw)
                 if (!f->live || !f->imgui)
                     continue;
                 BindFormGpu(f);
-                ImGui::SetCurrentContext(f->imgui);
+                BindFormUi(f);
                 ImGui_ImplDX11_Init(g_device, g_ctx);
             }
         }
@@ -79,7 +79,7 @@ static bool RecreateDevice(bool sw)
         if (!f->live || !f->imgui)
             continue;
         BindFormGpu(f);
-        ImGui::SetCurrentContext(f->imgui);
+        BindFormUi(f);
         ImGui_ImplDX11_Init(g_device, g_ctx);
     }
     return true;

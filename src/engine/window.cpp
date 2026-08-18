@@ -140,7 +140,7 @@ LRESULT WINAPI HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     if (f && f->imgui && msg != WM_NCHITTEST && msg != WM_NCCALCSIZE && msg != WM_DROPFILES)
     {
         // don't feed DROPFILES/NCHITTEST to imgui; it eats drops and steals caption hits.
-        ImGui::SetCurrentContext(f->imgui);
+        BindFormUi(f);
         if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp))
             return true;
     }

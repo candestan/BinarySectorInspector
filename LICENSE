@@ -22,11 +22,15 @@ following conditions are met:
    copyright notice above.
 
 This license covers the BinarySectorInspector project code only.
-Third-party code stays under its own licenses:
-  Dear ImGui  — third_party/imgui          https://github.com/ocornut/imgui
-  imgui_club  — third_party/imgui_club     https://github.com/ocornut/imgui_club
-  FreeType    — third_party/freetype       https://github.com/freetype/freetype  (FTL)
-  nlohmann/json — third_party/nlohmann_json https://github.com/nlohmann/json
+Third-party and bundled submodule code stays under its own licenses:
+  Dear ImGui     — third_party/imgui          https://github.com/ocornut/imgui          MIT
+  imgui_club     — third_party/imgui_club     https://github.com/ocornut/imgui_club     MIT
+  imnodes        — third_party/imnodes        https://github.com/Nelarius/imnodes       MIT
+  FreeType       — third_party/freetype       https://github.com/freetype/freetype      FTL or GPLv2
+  nlohmann/json  — third_party/nlohmann_json  https://github.com/nlohmann/json          MIT
+  KUARA-Dynamic  — third_party/kuara_dynamic  https://github.com/candestan/KUARA-Dynamic  Attribution-NonSale
+  DecompSnake    — plugins/decompsnake        https://github.com/candestan/BSI-Decompsnake  Attribution-NonSale
+  lydis          — plugins/lydis              https://github.com/Septillioner/bsi-lydis
 Snippet credits (Rich header, DIE-style heuristics, MSFT typelib, DComp, VMPStatic VMProtect layout, etc.)
 are in-source as `credit: <url>` comments.
 

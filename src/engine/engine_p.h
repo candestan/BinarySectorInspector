@@ -8,6 +8,8 @@
 static const int kMaxForms = 16;
 static const int kMinWindow = 300; // hard min. content-based min size inflated the HWND.
 
+struct ImNodesContext;
+
 struct Form
 {
     bool                    live;
@@ -21,6 +23,7 @@ struct Form
     IDCompositionTarget*    dcomp_target;
     IDCompositionVisual*    dcomp_visual;
     ImGuiContext*           imgui;
+    ImNodesContext*         imnodes;
     UINT                    w;
     UINT                    h;
     int                     min_w;
@@ -54,6 +57,7 @@ void UnbindFormGpu(Form* f);
 Form* FindForm(const char* name);
 Form* SpawnForm(const char* name, int w, int h);
 void  KillForm(Form* f);
+void  BindFormUi(Form* f);
 int   LiveFormCount();
 bool  IsDead(const char* name);
 void  MarkDead(const char* name);

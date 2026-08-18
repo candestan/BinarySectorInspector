@@ -18,7 +18,7 @@ No project reference, no `#include` of plugin code, no rebuild of the inspector.
 
 1. Copy `bsi_plugin.h` into the plugin repo. Do not include BSI `src/`.
 2. Export `BsiPluginGetInfo`, `BsiPluginInit`, `BsiPluginShutdown`.
-3. Build a DLL (`/MD` or `/MT` does not matter; do not link ImGui or the host).
+3. Build a DLL. Level 1 UI does not need ImGui. Level 2 UI compiles the host-pinned `imgui.cpp` / `imnodes.cpp` and binds the host contexts (see below). Do not link the inspector EXE.
 4. Copy the DLL to `{exe}/plugins/` (or a one-level subfolder).
 5. Start BinarySectorInspector. Settings → Plugins shows a card per DLL (search/filter by name, package id, author). Optional icon/cover paths come from `BsiPluginVisuals`, `plugin.json` / `tool.json`, or `icon.png` / `cover.png` next to the DLL.
 
@@ -55,7 +55,31 @@ The host loads a plugin when `BSI_PLUGIN_ABI_MIN <= info->abi_version <= BSI_PLU
 | `BsiPluginOnJob` | no | `ready=1` after a PE parses, `0` when closed or failed |
 | `BsiPluginVisuals` | no | Local `icon` / `cover` paths for the Settings card |
 
-Draw callbacks run on the UI thread. Do not link ImGui; use `BsiUi`.
+Draw callbacks run on the UI thread.
+
+Level 1: use `BsiUi` widgets. Do not call ImGui from the plugin.
+
+Level 2: bind the host ImGui / imnodes contexts, then call ImGui and ImNodes as usual. Native plugins are trusted in-process code, not a sandbox.
+
+```c
+if (BSI_UI_HAS(ui, imgui) && ui->imgui)
+{
+    ImGuiMemAllocFunc alloc_fn = 0;
+    ImGuiMemFreeFunc free_fn = 0;
+    void* user = 0;
+    if (BSI_HOST_HAS(host, imgui_get_allocators))
+        host->imgui_get_allocators(host->ctx, (void**)&alloc_fn, (void**)&free_fn, &user);
+    if (alloc_fn && free_fn)
+        ImGui::SetAllocatorFunctions(alloc_fn, free_fn, user);
+    ImGui::SetCurrentContext((ImGuiContext*)ui->imgui);
+    if (BSI_UI_HAS(ui, imnodes) && ui->imnodes)
+        ImNodes::SetCurrentContext((ImNodesContext*)ui->imnodes);
+}
+```
+
+Compile flags must match the host (`host->imgui_compile_flags`): currently `IMGUI_USE_WCHAR32` and `IMGUI_ENABLE_FREETYPE`. Use the same Dear ImGui and imnodes commits as `third_party/imgui` and `third_party/imnodes`. Do not Begin/End host windows. Do not keep `ImGuiContext*` after the callback returns. Do not call ImGui or ImNodes from worker threads.
+
+`BsiHost` is the current HostContext. New services are appended to `BsiHost` / `BsiUi` (size/version probe). Nested service tables (`BsiBinaryApi`, `BsiPatchApi`, …) are planned; they are not a breaking ABI yet. Do not freeze a DLL ABI until static providers have used the same contracts.
 
 ## Host paths (`host->path`)
 

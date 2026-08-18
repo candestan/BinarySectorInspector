@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
+#include "imnodes.h"
 
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -12,6 +13,16 @@
 #include <string.h>
 
 int g_spawn_n;
+
+void BindFormUi(Form* f)
+{
+    if (!f)
+        return;
+    if (f->imgui)
+        ImGui::SetCurrentContext(f->imgui);
+    if (f->imnodes)
+        ImNodes::SetCurrentContext(f->imnodes);
+}
 
 // tombstone so BeginForm doesn't respawn in the same frame.
 static char g_dead[kMaxForms][96];
@@ -99,9 +110,18 @@ void KillForm(Form* f)
 
     ImGuiContext* dying = f->imgui;
     ImGuiContext* prev = ImGui::GetCurrentContext();
+    ImNodesContext* dying_nodes = f->imnodes;
+    ImNodesContext* prev_nodes = ImNodes::GetCurrentContext();
+    if (dying)
+        ImGui::SetCurrentContext(dying);
+    if (dying_nodes)
+    {
+        ImNodes::SetCurrentContext(dying_nodes);
+        ImNodes::DestroyContext(dying_nodes);
+        f->imnodes = nullptr;
+    }
     if (dying)
     {
-        ImGui::SetCurrentContext(dying);
         ImGui_ImplDX11_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext(dying);
@@ -111,6 +131,10 @@ void KillForm(Form* f)
         ImGui::SetCurrentContext(prev);
     else
         ImGui::SetCurrentContext(nullptr);
+    if (prev_nodes && prev_nodes != dying_nodes)
+        ImNodes::SetCurrentContext(prev_nodes);
+    else
+        ImNodes::SetCurrentContext(nullptr);
 
     UnbindFormGpu(f);
 
@@ -228,6 +252,8 @@ Form* SpawnForm(const char* name, int w, int h)
 
     f->imgui = ImGui::CreateContext();
     ImGui::SetCurrentContext(f->imgui);
+    f->imnodes = ImNodes::CreateContext();
+    ImNodes::SetCurrentContext(f->imnodes);
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr;
@@ -270,7 +296,7 @@ bool BeginForm(const char* name, bool* open, ImVec2 init_size, bool is_main)
     g_cur = f;
     f->kill_me = false;
     SyncMaximized(f);
-    ImGui::SetCurrentContext(f->imgui);
+    BindFormUi(f);
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();

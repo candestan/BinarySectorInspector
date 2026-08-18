@@ -177,6 +177,9 @@
     <ClCompile Include="third_party\imgui\misc\freetype\imgui_freetype.cpp">
       <Filter>third_party</Filter>
     </ClCompile>
+    <ClCompile Include="third_party\imnodes\imnodes.cpp">
+      <Filter>third_party</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app\app.h">
@@ -267,6 +270,9 @@
       <Filter>app</Filter>
     </ClInclude>
     <ClInclude Include="third_party\imgui_club\imgui_memory_editor\imgui_memory_editor.h">
+      <Filter>third_party</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imnodes\imnodes.h">
       <Filter>third_party</Filter>
     </ClInclude>
   </ItemGroup>
