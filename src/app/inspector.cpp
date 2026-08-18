@@ -268,35 +268,31 @@ static ImU32 DetectConfCol(DetectConfidence conf)
 
 static void ConfBadge(const char* id, DetectConfidence conf)
 {
-    ImGui::PushID(id);
-    const char* lab = I18nGet(DetectConfKey(conf));
-    ImFont* sm = ThemeFontSmall();
-    if (sm)
-        ImGui::PushFont(sm);
-    ImVec2 ts = ImGui::CalcTextSize(lab);
-    float pad_x = ThemePx(6.f);
-    float pad_y = ThemePx(1.5f);
-    ImVec2 sz(ts.x + pad_x * 2.f, ts.y + pad_y * 2.f);
-    ImVec2 p = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("badge", sz);
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImU32 col = DetectConfCol(conf);
-    ImU32 bg = ThemeWithAlpha(col, 0.16f);
-    float r = ThemePx(3.f);
-    dl->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), bg, r);
-    dl->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y), col, r, 0, 1.f);
-    dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), col, lab);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNone))
+    UiBadge(id, I18nGet(DetectConfKey(conf)), DetectConfCol(conf), I18nGet(DetectConfTipKey(conf)));
+}
+
+static float FieldLabelCol()
+{
+    float content_w = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+    float col = ThemeLabelW();
+    if (col > content_w - ThemePx(80.f))
+        col = content_w * 0.42f;
+    if (col < ThemePx(72.f))
+        col = ThemePx(72.f);
+    return col;
+}
+
+static void FieldLabel(const char* k, const char* help = nullptr)
+{
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(ThemeColMuted()), "%s", k);
+    if (help && help[0])
     {
-        ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 36.f);
-        ImGui::TextUnformatted(I18nGet(DetectConfTipKey(conf)));
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
+        ImGui::SameLine(0.f, ThemeSpaceXs());
+        ImGui::PushID(k);
+        UiHelpMark(help);
+        ImGui::PopID();
     }
-    if (sm)
-        ImGui::PopFont();
-    ImGui::PopID();
 }
 
 static void EmptyHint(const char* key = "pe.none")
@@ -306,25 +302,14 @@ static void EmptyHint(const char* key = "pe.none")
 
 static void Field(const char* k, const char* v, const char* help = nullptr)
 {
-    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(ThemeColMuted()), "%s", k);
-    if (help && help[0])
-    {
-        ImGui::SameLine(0.f, ThemeSpaceXs());
-        ImGui::PushID(k);
-        UiHelpMark(help);
-        ImGui::PopID();
-    }
-    float content_w = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-    float col = ThemeLabelW();
-    if (col > content_w - ThemePx(80.f))
-        col = content_w * 0.42f;
-    if (col < ThemePx(72.f))
-        col = ThemePx(72.f);
+    FieldLabel(k, help);
+    float col = FieldLabelCol();
     float label_right = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + ImGui::GetScrollX();
     if (label_right + ThemeSpaceSm() > col)
         ImGui::SameLine(0.f, ThemeSpaceSm());
     else
         ImGui::SameLine(col);
+    ImGui::AlignTextToFramePadding();
     ImGui::PushTextWrapPos(0.f);
     ImGui::TextUnformatted(v ? v : "");
     ImGui::PopTextWrapPos();
@@ -332,23 +317,51 @@ static void Field(const char* k, const char* v, const char* help = nullptr)
 
 static void FieldCopy(const char* k, const char* v, const char* help)
 {
-    Field(k, (v && v[0]) ? v : I18nGet("pe.none"), help);
-    if (!v || !v[0])
-        return;
-    ImGui::SameLine(0.f, ThemeSpaceSm());
     ImGui::PushID(k);
-    if (UiButton(I18nGet("ui.copy")))
-        ImGui::SetClipboardText(v);
+    FieldLabel(k, help);
+    ImGui::SameLine(FieldLabelCol());
+    if (!v || !v[0])
+    {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", I18nGet("pe.none"));
+        ImGui::PopID();
+        return;
+    }
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s", v);
+    float row_h = ImGui::GetFrameHeight();
+    float btn_w = row_h;
+    float val_w = ImGui::GetContentRegionAvail().x - btn_w - ThemeSpaceXs();
+    if (val_w < ThemePx(80.f))
+        val_w = ThemePx(80.f);
+    UiFieldText("val", buf, (int)sizeof(buf), val_w);
+    ImGui::SameLine(0.f, ThemeSpaceXs());
+    UiCopyButton("cpy", v);
     ImGui::PopID();
 }
 
 static void FieldIdent(const char* k, const char* v, bool detected, DetectConfidence conf, const char* help)
 {
-    Field(k, v, help);
-    if (!detected)
-        return;
+    FieldLabel(k, help);
+    ImGui::SameLine(FieldLabelCol());
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(v ? v : "");
+    if (detected)
+    {
+        ImGui::SameLine(0.f, ThemeSpaceSm());
+        ConfBadge(k, conf);
+    }
+}
+
+static void FieldYesNo(const char* k, bool yes, const char* help, const char* tip)
+{
+    FieldLabel(k, help);
+    ImGui::SameLine(FieldLabelCol());
+    ImGui::AlignTextToFramePadding();
+    const char* lab = yes ? I18nGet("pe.yes") : I18nGet("pe.no");
+    ImGui::TextUnformatted(lab);
     ImGui::SameLine(0.f, ThemeSpaceSm());
-    ConfBadge(k, conf);
+    UiBadge("yn", lab, yes ? ThemeColSuccess() : ThemeColMuted(), tip);
 }
 
 static void FieldU(const char* k, uint64_t v, bool hex, const char* help = nullptr)
@@ -716,14 +729,19 @@ static void DrawOverview(const PeFile* pe)
     Field(I18nGet("pe.clr_com"), pe->has_com || !pe->typelibs.empty() ? I18nGet("pe.yes") : I18nGet("pe.no"),
         I18nGet("help.fld.clr"));
     FieldU(I18nGet("pe.dll_characteristics"), pe->dllchars, true, I18nGet("help.fld.dllchars"));
-    Field(I18nGet("pe.nx_dep"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) ? I18nGet("pe.yes") : I18nGet("pe.no"),
-        I18nGet("help.fld.nx"));
-    Field(I18nGet("pe.aslr"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) ? I18nGet("pe.yes") : I18nGet("pe.no"),
-        I18nGet("help.fld.aslr"));
-    Field(I18nGet("pe.cfg"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) ? I18nGet("pe.yes") : I18nGet("pe.no"),
-        I18nGet("help.fld.cfg"));
-    Field(I18nGet("pe.checksum"), pe->checksum_ok ? I18nGet("pe.checksum_ok") : I18nGet("pe.checksum_bad"),
-        I18nGet("help.fld.checksum"));
+    FieldYesNo(I18nGet("pe.nx_dep"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_NX_COMPAT) != 0,
+        I18nGet("help.fld.nx"), I18nGet("help.fld.nx"));
+    FieldYesNo(I18nGet("pe.aslr"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) != 0,
+        I18nGet("help.fld.aslr"), I18nGet("help.fld.aslr"));
+    FieldYesNo(I18nGet("pe.cfg"), (pe->dllchars & IMAGE_DLLCHARACTERISTICS_GUARD_CF) != 0,
+        I18nGet("help.fld.cfg"), I18nGet("help.fld.cfg"));
+    FieldLabel(I18nGet("pe.checksum"), I18nGet("help.fld.checksum"));
+    ImGui::SameLine(FieldLabelCol());
+    ImGui::AlignTextToFramePadding();
+    const char* cks = pe->checksum_ok ? I18nGet("pe.checksum_ok") : I18nGet("pe.checksum_bad");
+    ImGui::TextUnformatted(cks);
+    ImGui::SameLine(0.f, ThemeSpaceSm());
+    UiBadge("ck", cks, pe->checksum_ok ? ThemeColSuccess() : ThemeColWarning(), I18nGet("help.fld.checksum"));
     FieldU(I18nGet("pe.checksum_field"), pe->checksum, true, I18nGet("help.fld.checksum"));
     FieldU(I18nGet("pe.checksum_computed"), pe->checksum_computed, true, I18nGet("help.fld.checksum"));
     if (pe->overlay_size)
@@ -2102,20 +2120,20 @@ static void DrawRsrc(PeFile* pe)
     {
         char lab[176];
         if (g_rsrc_kind == 1)
-            snprintf(lab, sizeof(lab), "VERSION  %s", pe->versions[i].name);
+            snprintf(lab, sizeof(lab), "%s  %s", I18nGet("pe.rsrc.version"), pe->versions[i].name);
         else if (g_rsrc_kind == 2)
         {
             const PeIconImg& ic = pe->icons[i];
-            snprintf(lab, sizeof(lab), "ICON %u  %dx%d", ic.id, ic.w, ic.h);
+            snprintf(lab, sizeof(lab), "%s %u  %dx%d", I18nGet("pe.rsrc.icon"), ic.id, ic.w, ic.h);
         }
         else if (g_rsrc_kind == 3)
         {
             if (pe->clr_off && i == 0)
-                snprintf(lab, sizeof(lab), ".NET CLR");
+                snprintf(lab, sizeof(lab), "%s", I18nGet("pe.rsrc.clr"));
             else
             {
                 int ti = i - (pe->clr_off ? 1 : 0);
-                snprintf(lab, sizeof(lab), "TYPELIB  %s", pe->typelibs[ti].name);
+                snprintf(lab, sizeof(lab), "%s  %s", I18nGet("pe.rsrc.typelib"), pe->typelibs[ti].name);
             }
         }
         else
@@ -2456,13 +2474,12 @@ static void DrawDetection(const PeFile* pe)
             snprintf(title, sizeof(title), "%s  %s", r.product.c_str(), r.version.c_str());
 
         bool open = ImGui::TreeNodeEx("row", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", title);
-        ImGui::SameLine();
-        ImVec4 cc = ImGui::ColorConvertU32ToFloat4(DetectConfCol(r.confidence));
-        ImGui::TextColored(cc, "%s", I18nGet(DetectConfKey(r.confidence)));
+        ImGui::SameLine(0.f, ThemeSpaceSm());
+        ConfBadge("conf", r.confidence);
         if (r.heuristic)
         {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", I18nGet("detect.heuristic"));
+            ImGui::SameLine(0.f, ThemeSpaceSm());
+            UiBadge("heu", I18nGet("detect.heuristic"), ThemeColMuted(), I18nGet("detect.heuristic"));
         }
 
         if (!r.evidence.empty())
@@ -2483,7 +2500,9 @@ static void DrawDetection(const PeFile* pe)
                 Field(I18nGet("detect.vendor"), r.vendor.c_str());
             Field(I18nGet("detect.source"), I18nGet(DetectSrcKey(r.source)));
             Field(I18nGet("detect.category"), I18nGet(DetectCatKey(r.category)));
-            Field(I18nGet("detect.confidence"), I18nGet(DetectConfKey(r.confidence)));
+            FieldLabel(I18nGet("detect.confidence"));
+            ImGui::SameLine(FieldLabelCol());
+            ConfBadge("det_conf", r.confidence);
             if (!r.description.empty())
                 Field(I18nGet("detect.evidence"), r.description.c_str());
             if (!r.reference.empty())
@@ -2530,6 +2549,29 @@ static const char* FindingKindKey(PeFindingKind k)
     }
 }
 
+static ImU32 FindingSeverityCol(FindingSeverity sev)
+{
+    switch (sev)
+    {
+    case FindSevCritical: return ThemeColDanger();
+    case FindSevHigh: return ThemeColWarning();
+    case FindSevMedium: return ThemeColInfo();
+    case FindSevLow: return ThemeColFg();
+    default: return ThemeColMuted();
+    }
+}
+
+static ImU32 FindingConfidenceCol(FindingConfidence conf)
+{
+    switch (conf)
+    {
+    case FindConfExact: return ThemeColSuccess();
+    case FindConfHigh: return ThemeColInfo();
+    case FindConfMedium: return ThemeColFg();
+    default: return ThemeColMuted();
+    }
+}
+
 static void DrawFindingDetail(const PeFile* pe, const FindingItem& f)
 {
     ImGui::Spacing();
@@ -2541,9 +2583,13 @@ static void DrawFindingDetail(const PeFile* pe, const FindingItem& f)
     ImGui::TextWrapped("%s", FindingText(f.matter_key));
     ImGui::PopStyleColor();
     ImGui::Spacing();
-    ImGui::Text("%s: %s", I18nGet("finding.detail.severity"), I18nGet(FindingSeverityKey(f.severity)));
+    ImGui::TextUnformatted(I18nGet("finding.detail.severity"));
+    ImGui::SameLine(0.f, ThemeSpaceSm());
+    UiBadge("sev", I18nGet(FindingSeverityKey(f.severity)), FindingSeverityCol(f.severity), nullptr);
     ImGui::SameLine(0.f, ThemeSpaceMd());
-    ImGui::Text("%s: %s", I18nGet("finding.detail.confidence"), I18nGet(FindingConfidenceKey(f.confidence)));
+    ImGui::TextUnformatted(I18nGet("finding.detail.confidence"));
+    ImGui::SameLine(0.f, ThemeSpaceSm());
+    UiBadge("conf", I18nGet(FindingConfidenceKey(f.confidence)), FindingConfidenceCol(f.confidence), nullptr);
     if (f.evidence_text[0])
     {
         ImGui::Spacing();
@@ -2637,8 +2683,8 @@ static void DrawFindings(const PeFile* pe)
             ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
         {
             ImGui::TableSetupScrollFreeze(0, 1);
-            ImGui::TableSetupColumn(I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(72.f));
-            ImGui::TableSetupColumn(I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, ThemePx(100.f));
+            ImGui::TableSetupColumn(I18nGet("finding.col.severity"), ImGuiTableColumnFlags_WidthFixed, ThemePx(88.f));
+            ImGui::TableSetupColumn(I18nGet("pe.find_cat"), ImGuiTableColumnFlags_WidthFixed, ThemePx(112.f));
             ImGui::TableSetupColumn(I18nGet("pe.finding"), ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableHeadersRow();
             ImGuiListClipper clip;
@@ -2652,11 +2698,14 @@ static void DrawFindings(const PeFile* pe)
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     bool sel = (g_find_sel == i);
-                    if (ImGui::Selectable(I18nGet(FindingSeverityKey(f.severity)), sel, ImGuiSelectableFlags_SpanAllColumns))
+                    if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
                         g_find_sel = i;
-                    ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(I18nGet(FindingCategoryKey(f.category)));
-                    ImGui::TableNextColumn();
+                    ImGui::TableSetColumnIndex(0);
+                    UiBadge("sev", I18nGet(FindingSeverityKey(f.severity)), FindingSeverityCol(f.severity), nullptr);
+                    ImGui::TableSetColumnIndex(1);
+                    UiBadge("cat", I18nGet(FindingCategoryKey(f.category)), ThemeColMuted(), nullptr);
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::AlignTextToFramePadding();
                     ImGui::TextUnformatted(FindingText(f.title_key));
                     ImGui::PopID();
                 }
@@ -2709,11 +2758,19 @@ static void DrawFindings(const PeFile* pe)
             }
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(col));
-            bool hit = ImGui::Selectable(sev, false, ImGuiSelectableFlags_SpanAllColumns);
-            ImGui::PopStyleColor();
-            if (hit && f.file_off)
-                GoHex(f.file_off);
+            if (ImGui::Selectable("##row", false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+            {
+                if (f.file_off)
+                    GoHex(f.file_off);
+            }
+            ImGui::TableSetColumnIndex(0);
+            UiBadge("sev", sev, col, nullptr);
+            ImGui::TableSetColumnIndex(1);
+            UiBadge("cat", I18nGet(FindingKindKey(f.kind)), ThemeColMuted(), nullptr);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextUnformatted(FindingText(f.title));
+            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(FindingText(f.why));
             if (UiBeginPopupContextItem("fctx"))
             {
                 if (ImGui::MenuItem(I18nGet("ui.copy")))
@@ -2727,12 +2784,6 @@ static void DrawFindings(const PeFile* pe)
                     GoHex(f.file_off);
                 UiEndPopup();
             }
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(I18nGet(FindingKindKey(f.kind)));
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(FindingText(f.title));
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(FindingText(f.why));
             ImGui::PopID();
         }
     }
