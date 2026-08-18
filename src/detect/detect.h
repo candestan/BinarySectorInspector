@@ -69,6 +69,7 @@ struct DetectSectionFact
     char     name[9];
     uint32_t chars;
     uint32_t vsize;
+    uint32_t vaddr;
     uint32_t rawsize;
     uint32_t rawptr;
     double   entropy;

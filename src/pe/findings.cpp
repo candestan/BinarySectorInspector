@@ -375,9 +375,8 @@ void PeCollectFindings(PeFile* pe)
         Add(pe, PeFindingWarn, PeFindAnomaly, "find.epout.title", "find.epout.why", nullptr, 0);
     else if (ep.section_index >= 0)
     {
-        if (strncmp(ep.section_name, "UPX", 3) == 0 || strcmp(ep.section_name, ".themida") == 0 ||
-            strcmp(ep.section_name, ".aspack") == 0)
-            Add(pe, PeFindingNotice, PeFindPacking, "find.epsec.title", "find.epsec.why", ep.section_name, (uint32_t)ep.file_off);
+        Add(pe, PeFindingNotice, PeFindPacking, "find.epsec.title", "find.epsec.why",
+            ep.section_name, (uint32_t)ep.file_off);
     }
     if (pe->imports.empty() && (pe->chars & IMAGE_FILE_DLL) == 0)
         Add(pe, PeFindingNotice, PeFindPacking, "find.noimp.title", "find.noimp.why", nullptr, 0);

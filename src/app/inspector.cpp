@@ -697,8 +697,7 @@ static void DrawOverview(const PeFile* pe)
         FieldCopy("Imphash", pe->imphash, I18nGet("help.fld.imphash"));
     FieldIdent(I18nGet("pe.compiler"), pe->compiler, pe->compiler_detected, pe->compiler_conf, I18nGet("help.fld.compiler"));
     FieldIdent(I18nGet("pe.packer"), pe->packer, pe->packer_detected, pe->packer_conf, I18nGet("help.fld.packer"));
-    if (pe->protector_detected)
-        FieldIdent(I18nGet("pe.protector"), pe->protector, pe->protector_detected, pe->protector_conf, I18nGet("help.fld.protector"));
+    FieldIdent(I18nGet("pe.protector"), pe->protector, pe->protector_detected, pe->protector_conf, I18nGet("help.fld.protector"));
     if (pe->has_com)
         FieldIdent(I18nGet("pe.obfuscator"), pe->obfuscator, pe->obfuscator_detected, pe->obfuscator_conf, I18nGet("help.fld.obfuscator"));
     Field(I18nGet("pe.arch"), pe->machine_s, I18nGet("help.fld.arch"));
@@ -1398,10 +1397,6 @@ static const wchar_t* ExportFilter(const char* suggest)
         return L"Python bytecode\0*.pyc\0All\0*.*\0";
     if (ext && _stricmp(ext, ".py") == 0)
         return L"Python\0*.py\0All\0*.*\0";
-    if (ext && _stricmp(ext, ".au3") == 0)
-        return L"AutoIt script\0*.au3\0All\0*.*\0";
-    if (ext && _stricmp(ext, ".ahk") == 0)
-        return L"AutoHotkey script\0*.ahk\0All\0*.*\0";
     if (ext && (_stricmp(ext, ".bin") == 0 || _stricmp(ext, ".dat") == 0))
         return L"Binary\0*.bin\0All\0*.*\0";
     return L"All\0*.*\0";

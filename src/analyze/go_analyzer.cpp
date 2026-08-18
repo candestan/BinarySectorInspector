@@ -769,7 +769,4 @@ static const AnalyzerProvider kGoProvider = {
     ExportGo
 };
 
-void AnalyzeRegisterGo()
-{
-    AnalyzeRegister(&kGoProvider);
-}
+static AnalyzerSelfRegister g_go_reg(&kGoProvider);

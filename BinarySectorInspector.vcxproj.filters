@@ -108,7 +108,7 @@
     <ClCompile Include="src\pe\patch.cpp">
       <Filter>pe</Filter>
     </ClCompile>
-    <ClCompile Include="src\pe\py2exe.cpp">
+    <ClCompile Include="src\analyze\py2exe_analyzer.cpp">
       <Filter>pe</Filter>
     </ClCompile>
     <ClCompile Include="src\pe\findings.cpp">

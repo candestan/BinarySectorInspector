@@ -40,7 +40,13 @@ enum CondKind : uint8_t
     CondLinkerMajor,
     CondLinkerMinor,
     CondImportDllCount,
-    CondWxSection
+    CondWxSection,
+    CondSectionRawSize,
+    CondOddSectionNames,
+    CondVirtualOnlyBeforeEntry,
+    CondEntrySectionChars,
+    CondEntrySectionRawSize,
+    CondEntrySectionEntropy
 };
 
 enum MatchMode : uint8_t

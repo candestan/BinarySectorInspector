@@ -302,7 +302,4 @@ static const AnalyzerProvider kAhkProvider = {
     ExportAhk
 };
 
-void AnalyzeRegisterAhk()
-{
-    AnalyzeRegister(&kAhkProvider);
-}
+static AnalyzerSelfRegister g_ahk_reg(&kAhkProvider);
