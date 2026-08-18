@@ -223,11 +223,11 @@ static void NukeIconTex()
     g_icon_tex.clear();
 }
 
-static ID3D11ShaderResourceView* IconPreview(const PeIconImg& ic, int* w, int* h)
+static ID3D11ShaderResourceView* BytesPreview(uint32_t off, uint32_t size, int* w, int* h)
 {
     for (IconTex& t : g_icon_tex)
     {
-        if (t.off == ic.file_off)
+        if (t.off == off)
         {
             if (w) *w = t.w;
             if (h) *h = t.h;
@@ -236,11 +236,12 @@ static ID3D11ShaderResourceView* IconPreview(const PeIconImg& ic, int* w, int* h
     }
     size_t n = 0;
     uint8_t* b = PeJobBytes(&n);
-    if (!b || ic.file_off + ic.size > n)
+    if (!b || size == 0 || (uint64_t)off + size > n)
         return nullptr;
     IconTex t{};
-    t.off = ic.file_off;
-    if (TexLoadPeIcon(b + ic.file_off, ic.size, &t.srv, &t.w, &t.h))
+    t.off = off;
+    if (TexLoadPeIcon(b + off, size, &t.srv, &t.w, &t.h) ||
+        TexLoadMemory(b + off, size, &t.srv, &t.w, &t.h))
     {
         if (w) *w = t.w;
         if (h) *h = t.h;
@@ -248,6 +249,11 @@ static ID3D11ShaderResourceView* IconPreview(const PeIconImg& ic, int* w, int* h
         return t.srv;
     }
     return nullptr;
+}
+
+static ID3D11ShaderResourceView* IconPreview(const PeIconImg& ic, int* w, int* h)
+{
+    return BytesPreview(ic.file_off, ic.size, w, h);
 }
 
 static void DoSave(bool save_as)
@@ -2162,7 +2168,40 @@ static void DrawAnalysis(PeFile* pe)
     ImGui::EndChild();
 }
 
-static void DrawRsrcPeek(const PeRsrcLeaf& L)
+static bool LeafIsImage(const PeRsrcLeaf& L)
+{
+    if (L.type_id == 1 || L.type_id == 2 || L.type_id == 3)
+        return true;
+    if (L.type_id == 12 || L.type_id == 14)
+        return true;
+    if (_stricmp(L.type_name, "ICON") == 0 || _stricmp(L.type_name, "CURSOR") == 0)
+        return true;
+    if (_stricmp(L.type_name, "BITMAP") == 0)
+        return true;
+    if (_stricmp(L.type_name, "GROUP_ICON") == 0 || _stricmp(L.type_name, "GROUP_CURSOR") == 0)
+        return true;
+    return false;
+}
+
+static bool LeafIsGroupImage(const PeRsrcLeaf& L)
+{
+    if (L.type_id == 12 || L.type_id == 14)
+        return true;
+    if (_stricmp(L.type_name, "GROUP_ICON") == 0 || _stricmp(L.type_name, "GROUP_CURSOR") == 0)
+        return true;
+    return false;
+}
+
+static void DrawRsrcImage(ID3D11ShaderResourceView* srv, float box)
+{
+    ImVec2 sz(box, box);
+    if (srv)
+        ImGui::Image(ImTextureRef((void*)srv), sz);
+    else
+        ImGui::Dummy(sz);
+}
+
+static void DrawRsrcPeek(PeFile* pe, const PeRsrcLeaf& L)
 {
     Field(I18nGet("pe.col.type"), L.type_name, I18nGet("help.fld.rsrctype"));
     Field(I18nGet("pe.field.name"), L.name, I18nGet("help.fld.rsrcname"));
@@ -2170,6 +2209,65 @@ static void DrawRsrcPeek(const PeRsrcLeaf& L)
     FieldU(I18nGet("pe.col.rva"), L.rva, true, I18nGet("help.fld.rsrcrva"));
     FieldU(I18nGet("pe.col.offset"), L.file_off, true, I18nGet("help.fld.rsrcoff"));
     FieldU(I18nGet("pe.col.size"), L.size, false, I18nGet("help.fld.rsrcsize"));
+
+    const PeIconImg* ic = nullptr;
+    for (int i = 0; i < (int)pe->icons.size(); i++)
+    {
+        if (pe->icons[i].file_off == L.file_off)
+        {
+            ic = &pe->icons[i];
+            break;
+        }
+    }
+    if (!ic && LeafIsImage(L) && !LeafIsGroupImage(L))
+    {
+        for (int i = 0; i < (int)pe->icons.size(); i++)
+        {
+            if (pe->icons[i].id == (uint16_t)L.name_id)
+            {
+                ic = &pe->icons[i];
+                break;
+            }
+        }
+    }
+    if (ic)
+    {
+        ImGui::Spacing();
+        int tw = 0, th = 0;
+        DrawRsrcImage(IconPreview(*ic, &tw, &th), ThemePx(96.f));
+        ImGui::Text("%dx%d  %d bpp", ic->w, ic->h, ic->bpp);
+    }
+    else if (LeafIsGroupImage(L) && !pe->icons.empty())
+    {
+        ImGui::Spacing();
+        int shown = 0;
+        for (int i = 0; i < (int)pe->icons.size(); i++)
+        {
+            const PeIconImg& img = pe->icons[i];
+            if (L.lang && img.lang && img.lang != L.lang)
+                continue;
+            if (shown && (shown % 6) != 0)
+                ImGui::SameLine();
+            int tw = 0, th = 0;
+            DrawRsrcImage(IconPreview(img, &tw, &th), ThemePx(48.f));
+            shown++;
+            if (shown >= 12)
+                break;
+        }
+    }
+    else if (LeafIsImage(L) || L.size >= 16)
+    {
+        int tw = 0, th = 0;
+        ID3D11ShaderResourceView* srv = BytesPreview(L.file_off, L.size, &tw, &th);
+        if (srv)
+        {
+            ImGui::Spacing();
+            DrawRsrcImage(srv, ThemePx(96.f));
+            if (tw > 0 && th > 0)
+                ImGui::Text("%dx%d", tw, th);
+        }
+    }
+
     size_t n = 0;
     uint8_t* b = PeJobBytes(&n);
     if (!b || L.file_off >= n)
@@ -2312,13 +2410,15 @@ static void DrawRsrc(PeFile* pe)
     {
         const PeRsrcLeaf& L = pe->rsrc[g_rsrc_row];
         int ri = AnalysisRootForOff(pe, L.file_off);
-        if (ri >= 0)
+        if (LeafIsImage(L))
+            DrawRsrcPeek(pe, L);
+        else if (ri >= 0)
         {
             g_an_root = ri;
             DrawArtifactBundle(pe, &pe->analysis[ri], true);
         }
         else
-            DrawRsrcPeek(L);
+            DrawRsrcPeek(pe, L);
     }
     ImGui::EndChild();
 }
@@ -2635,14 +2735,38 @@ static void DrawDetection(const PeFile* pe)
         else
             snprintf(title, sizeof(title), "%s  %s", r.product.c_str(), r.version.c_str());
 
-        bool open = ImGui::TreeNodeEx("row", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", title);
-        ImGui::SameLine(0.f, ThemeBadgeGap());
+        bool open = ImGui::TreeNodeEx("row",
+            ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_FramePadding,
+            "%s", title);
+        ImVec2 after = ImGui::GetCursorScreenPos();
+        ImVec2 rmin = ImGui::GetItemRectMin();
+        ImVec2 rmax = ImGui::GetItemRectMax();
+        float conf_w = 0.f;
+        const char* ckeys[] = {
+            "detect.conf.low", "detect.conf.medium", "detect.conf.high", "detect.conf.exact"
+        };
+        for (int ci = 0; ci < 4; ci++)
+        {
+            float cw = UiBadgeWidth(I18nGet(ckeys[ci]));
+            if (cw > conf_w)
+                conf_w = cw;
+        }
+        float heu_w = 0.f;
+        if (r.heuristic)
+            heu_w = ThemeBadgeGap() + UiBadgeWidth(I18nGet("detect.heuristic"));
+        float x = rmin.x + ImGui::GetTreeNodeToLabelSpacing() + ImGui::CalcTextSize(title).x + ThemeBadgeGap();
+        if (x + conf_w + heu_w > rmax.x - ThemeSpaceXs())
+            x = rmax.x - ThemeSpaceXs() - conf_w - heu_w;
+        float bh = UiBadgeHeight();
+        float by = rmin.y + (rmax.y - rmin.y - bh) * 0.5f;
+        ImGui::SetCursorScreenPos(ImVec2(x, by));
         ConfBadge("conf", r.confidence);
         if (r.heuristic)
         {
             ImGui::SameLine(0.f, ThemeBadgeGap());
             UiBadge("heu", I18nGet("detect.heuristic"), ThemeColMuted(), I18nGet("detect.heuristic"));
         }
+        ImGui::SetCursorScreenPos(after);
 
         if (!r.evidence.empty())
         {
@@ -2823,12 +2947,24 @@ static void DrawFindings(const PeFile* pe)
                 continue;
             const FindingItem& f = rep.findings[(size_t)idx];
             ImGui::PushID(1000 + idx);
+            float h = ImGui::GetFrameHeight();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            float w = ImGui::GetContentRegionAvail().x;
+            bool sel = (g_find_sel == idx);
+            if (ImGui::Selectable("##sh", sel, 0, ImVec2(w, h)))
+                g_find_sel = idx;
+            UiHandIfHovered();
+            float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || sel);
+            ImVec2 q = ImGui::GetItemRectMax();
+            UiHoverSweep(p, q, ht);
+            UiAccentBar(p, q, sel ? 1.f : ht);
+            float s = IconSize(IconRoleSm);
+            IconDraw(IconGo, ImVec2(p.x + ThemeSpaceXs() + s, p.y + h * 0.5f), s, ThemeColAccent());
             char line[256];
             snprintf(line, sizeof(line), "%d. %s", i + 1, FindingText(f.title_key));
-            if (ImGui::Selectable(line, g_find_sel == idx))
-                g_find_sel = idx;
-            if (ImGui::IsItemHovered())
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(p.x + IconSlotW(IconRoleSm), p.y + (h - ImGui::GetFontSize()) * 0.5f),
+                ThemeColAccent(), line);
             ImGui::PopID();
         }
         ImGui::Spacing();
@@ -3577,9 +3713,11 @@ void InspectorDraw()
     float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + ThemeSplitHit() : 0.f);
     if (body_w < ThemePx(80.f))
         body_w = ThemePx(80.f);
-    ImGui::BeginChild("pe_body", ImVec2(body_w, 0.f), ImGuiChildFlags_None);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceLg(), ThemeSpaceMd()));
+    ImGui::BeginChild("pe_body", ImVec2(body_w, 0.f), ImGuiChildFlags_AlwaysUseWindowPadding);
     FillBody();
     ImGui::EndChild();
+    ImGui::PopStyleVar();
     if (PaneDirty())
     {
         ImVec2 a = ImGui::GetItemRectMin();

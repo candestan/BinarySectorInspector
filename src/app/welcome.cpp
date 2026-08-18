@@ -155,12 +155,15 @@ void WelcomeDraw()
                 continue;
             ImGui::PushID(i);
             ImVec2 row = ImGui::GetCursorScreenPos();
-            float s = IconSize(IconRoleSm);
-            IconDraw(IconFile, ImVec2(row.x + ThemeSpaceXs() + s, row.y + row_h * 0.5f), s, ThemeColMuted());
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + IconSlotW(IconRoleSm));
+            float slot = IconSlotW(IconRoleSm);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + slot);
             if (ImGui::Selectable(FileNameOf(path)))
                 AppOpenPath(path);
             UiDecorateLastButton();
+            ImVec2 a = ImGui::GetItemRectMin();
+            ImVec2 b = ImGui::GetItemRectMax();
+            float s = IconSize(IconRoleSm);
+            IconDraw(IconFile, ImVec2(row.x + ThemeSpaceXs() + s, (a.y + b.y) * 0.5f), s, ThemeColMuted());
             if (ImGui::IsItemHovered())
             {
                 ImGui::SetTooltip("%s", path);

@@ -180,7 +180,7 @@ static bool IconDrawEmoji(int icon, ImVec2 c, float s, unsigned int col, ImDrawL
         return false;
     float fs = s * 1.85f;
     ImVec2 ts = font->CalcTextSizeA(fs, 1e10f, 0.f, em);
-    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f), col, em);
+    dl->AddText(font, fs, ImVec2(c.x - ts.x * 0.5f, c.y - ts.y * 0.5f - ThemePx(1.5f)), col, em);
     return true;
 }
 
@@ -188,10 +188,10 @@ void IconDraw(int icon, ImVec2 c, float s, unsigned int col, ImDrawList* dl)
 {
     if (!dl)
         dl = ImGui::GetWindowDrawList();
-    if (IconDrawEmoji(icon, c, s, col, dl))
-        return;
     s *= GlyphOptical(icon);
     c.y += GlyphY(icon) * s;
+    if (IconDrawEmoji(icon, c, s, col, dl))
+        return;
     float sw = Stroke(s);
     float x0 = c.x - s, y0 = c.y - s, x1 = c.x + s, y1 = c.y + s;
     switch (icon)
