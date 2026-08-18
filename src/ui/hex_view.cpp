@@ -445,6 +445,40 @@ void HexViewSelect(size_t off, size_t n)
     g_sel_end = off + n - 1;
 }
 
+bool HexViewCursor(size_t* off, size_t* size)
+{
+    size_t a = g_anchor;
+    size_t b = g_sel_end;
+    if (a == (size_t)-1)
+    {
+        if (g_ed.DataEditingAddr != (size_t)-1)
+            a = b = g_ed.DataEditingAddr;
+        else if (g_ed.DataPreviewAddr != (size_t)-1)
+            a = b = g_ed.DataPreviewAddr;
+        else
+        {
+            if (off)
+                *off = 0;
+            if (size)
+                *size = 0;
+            return false;
+        }
+    }
+    if (b == (size_t)-1)
+        b = a;
+    if (a > b)
+    {
+        size_t t = a;
+        a = b;
+        b = t;
+    }
+    if (off)
+        *off = a;
+    if (size)
+        *size = (b - a) + 1;
+    return true;
+}
+
 void HexViewDraw()
 {
     size_t n = 0;

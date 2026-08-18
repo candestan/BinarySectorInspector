@@ -843,6 +843,64 @@ static int RecSectionAt(void*, int index,
     return 1;
 }
 
+static uint16_t RecPeMachine(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? pe->machine : 0;
+}
+
+static uint64_t RecImageBase(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? pe->image_base : 0;
+}
+
+static uint32_t RecEntryRva(void*)
+{
+    const PeFile* pe = PeJobResult();
+    return pe ? pe->entry_rva : 0;
+}
+
+static int RecRvaToOff(void*, uint32_t rva, uint32_t* file_off)
+{
+    const PeFile* pe = PeJobResult();
+    if (!pe || !file_off)
+        return 0;
+    uint32_t off = PeImageRvaToOff(pe, rva);
+    if (!off && rva)
+        return 0;
+    *file_off = off;
+    return 1;
+}
+
+static int RecOffToRva(void*, uint32_t file_off, uint32_t* rva)
+{
+    const PeFile* pe = PeJobResult();
+    if (!pe || !rva)
+        return 0;
+    *rva = PeFileOffToRva(pe, file_off);
+    return 1;
+}
+
+static int RecHexCursor(void*, uint32_t* file_off, uint32_t* size)
+{
+    size_t off = 0;
+    size_t n = 0;
+    if (!HexViewCursor(&off, &n))
+    {
+        if (file_off)
+            *file_off = 0;
+        if (size)
+            *size = 0;
+        return 0;
+    }
+    if (file_off)
+        *file_off = (uint32_t)off;
+    if (size)
+        *size = (uint32_t)n;
+    return 1;
+}
+
 static void RecToast(void*, int type, const char* title, const char* body)
 {
     UiToastType t = UiToastInfo;
@@ -1074,6 +1132,12 @@ static void FillHost(PluginRec* p)
     p->host.rsrc_at = RecRsrcAt;
     p->host.section_count = RecSectionCount;
     p->host.section_at = RecSectionAt;
+    p->host.pe_machine = RecPeMachine;
+    p->host.image_base = RecImageBase;
+    p->host.entry_rva = RecEntryRva;
+    p->host.rva_to_off = RecRvaToOff;
+    p->host.off_to_rva = RecOffToRva;
+    p->host.hex_cursor = RecHexCursor;
     p->host.toast = RecToast;
 }
 
@@ -1258,10 +1322,16 @@ static bool LoadDll(const char* path)
     }
     HMODULE h = LoadLibraryA(path);
     if (!h)
+    {
+        auto log = LogFor(LogBuiltinCore).Module("Plugin");
+        log.Warning("LoadLibrary failed %s (%u)", path, GetLastError());
         return false;
+    }
     auto get_info = (FnGetInfo)GetProcAddress(h, "BsiPluginGetInfo");
     if (!get_info)
     {
+        auto log = LogFor(LogBuiltinCore).Module("Plugin");
+        log.Warning("Skipped %s (no BsiPluginGetInfo)", path);
         FreeLibrary(h);
         return false;
     }

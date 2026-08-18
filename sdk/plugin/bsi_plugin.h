@@ -224,6 +224,12 @@ struct BsiHost
             char* name, int name_cap,
             uint32_t* vaddr, uint32_t* vsize, uint32_t* rawptr, uint32_t* rawsize,
             uint32_t* chars);
+    uint16_t (*pe_machine)(void* ctx);
+    uint64_t (*image_base)(void* ctx);
+    uint32_t (*entry_rva)(void* ctx);
+    int  (*rva_to_off)(void* ctx, uint32_t rva, uint32_t* file_off);
+    int  (*off_to_rva)(void* ctx, uint32_t file_off, uint32_t* rva);
+    int  (*hex_cursor)(void* ctx, uint32_t* file_off, uint32_t* size);
     void (*toast)(void* ctx, int type, const char* title, const char* body);
 };
 
