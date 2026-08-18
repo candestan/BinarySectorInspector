@@ -475,16 +475,11 @@ static void DrawThemes()
 }
 
 static char g_plug_q[128];
-static bool g_plug_in_name = true;
-static bool g_plug_in_id = true;
-static bool g_plug_in_author = true;
 static int  g_plug_status; // 0 all, 1 enabled, 2 disabled
 static char g_plug_auth[32][80];
 static uint8_t g_plug_auth_on[32];
 static int  g_plug_auth_n;
 static char g_plug_auth_sig[512];
-static bool g_plug_search_open;
-static bool g_plug_filter_open;
 
 static void LowerAscii(char* s)
 {
@@ -596,20 +591,17 @@ static bool PlugMatches(int i)
         return false;
     if (!g_plug_q[0])
         return true;
-    bool hit = false;
-    if (g_plug_in_name && PlugHay(PluginName(i), g_plug_q))
-        hit = true;
-    if (g_plug_in_id && PlugHay(PluginId(i), g_plug_q))
-        hit = true;
-    if (g_plug_in_author && PlugHay(PluginAuthor(i), g_plug_q))
-        hit = true;
-    return hit;
+    if (PlugHay(PluginName(i), g_plug_q))
+        return true;
+    if (PlugHay(PluginId(i), g_plug_q))
+        return true;
+    if (PlugHay(PluginAuthor(i), g_plug_q))
+        return true;
+    return false;
 }
 
 static bool PlugFilterDirty()
 {
-    if (!g_plug_in_name || !g_plug_in_id || !g_plug_in_author)
-        return true;
     if (g_plug_status != 0)
         return true;
     for (int i = 0; i < g_plug_auth_n; i++)
@@ -622,62 +614,15 @@ static bool PlugFilterDirty()
 
 static void PlugResetFilters()
 {
-    g_plug_in_name = true;
-    g_plug_in_id = true;
-    g_plug_in_author = true;
     g_plug_status = 0;
     for (int i = 0; i < g_plug_auth_n; i++)
         g_plug_auth_on[i] = 1;
 }
 
-static void DrawPluginSearchDialog()
+static void DrawPluginFilterPopup()
 {
-    if (g_plug_search_open)
-        ImGui::OpenPopup("plugin_search");
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
-    char title[160];
-    snprintf(title, sizeof(title), "%s###plugin_search", I18nGet("plugin.search_title"));
-    if (!ImGui::BeginPopupModal(title, &g_plug_search_open, ImGuiWindowFlags_AlwaysAutoResize))
+    if (!ImGui::BeginPopup("plugin_filter"))
         return;
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
-    ImGui::TextWrapped("%s", I18nGet("plugin.search_hint"));
-    ImGui::PopStyleColor();
-    ImGui::Spacing();
-    ImGui::TextUnformatted(I18nGet("plugin.search_query"));
-    ImGui::SetNextItemWidth(-1.f);
-    if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-    ImGui::InputText("##plugq", g_plug_q, (int)sizeof(g_plug_q));
-    ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
-    {
-        g_plug_search_open = false;
-        ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (UiButton(I18nGet("plugin.search_clear")))
-        g_plug_q[0] = 0;
-    ImGui::EndPopup();
-}
-
-static void DrawPluginFilterDialog()
-{
-    if (g_plug_filter_open)
-        ImGui::OpenPopup("plugin_filter");
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(ThemePx(420.f), 0.f), ImGuiCond_Appearing);
-    char title[160];
-    snprintf(title, sizeof(title), "%s###plugin_filter", I18nGet("plugin.filter_title"));
-    if (!ImGui::BeginPopupModal(title, &g_plug_filter_open, ImGuiWindowFlags_AlwaysAutoResize))
-        return;
-    ImGui::TextUnformatted(I18nGet("plugin.filter_in"));
-    UiCheckbox("fn", I18nGet("plugin.filter_name"), &g_plug_in_name);
-    UiCheckbox("fid", I18nGet("plugin.filter_package"), &g_plug_in_id);
-    UiCheckbox("fau", I18nGet("plugin.filter_author"), &g_plug_in_author);
-    ImGui::Spacing();
     ImGui::TextUnformatted(I18nGet("plugin.filter_status"));
     if (ImGui::RadioButton(I18nGet("plugin.filter_all"), g_plug_status == 0))
         g_plug_status = 0;
@@ -692,7 +637,7 @@ static void DrawPluginFilterDialog()
         ImGui::Spacing();
         ImGui::TextUnformatted(I18nGet("plugin.filter_authors"));
         float h = ImGui::GetTextLineHeightWithSpacing() * (float)(g_plug_auth_n > 6 ? 6 : g_plug_auth_n) + 8.f;
-        ImGui::BeginChild("authlist", ImVec2(-1.f, h), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("authlist", ImVec2(ThemePx(280.f), h), ImGuiChildFlags_Borders);
         for (int i = 0; i < g_plug_auth_n; i++)
         {
             ImGui::PushID(i);
@@ -704,12 +649,6 @@ static void DrawPluginFilterDialog()
         ImGui::EndChild();
     }
     ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.dialog_done"), ImVec2(0, 0), 1))
-    {
-        g_plug_filter_open = false;
-        ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
     if (UiButton(I18nGet("plugin.filter_reset")))
         PlugResetFilters();
     ImGui::EndPopup();
@@ -752,12 +691,10 @@ static void DrawPluginCard(int i, float cell_w, float cell_h, float img_h)
         char by[120];
         snprintf(by, sizeof(by), "%s %s", I18nGet("settings.made_by"), PluginAuthor(i));
         dl->AddText(ImVec2(tx, ty), ThemeColMuted(), by);
-        ty += ImGui::GetTextLineHeight() + 2.f;
+        ty += ImGui::GetTextLineHeight() + 6.f;
     }
-    char pkg[160];
-    snprintf(pkg, sizeof(pkg), "%s  %s", I18nGet("plugin.package"), PluginId(i));
-    dl->AddText(ImVec2(tx, ty), ThemeColMuted(), pkg);
-    ty += ImGui::GetTextLineHeight() + 6.f;
+    else
+        ty += 2.f;
     if (PluginDescription(i)[0])
     {
         dl->PushClipRect(ImVec2(tx, ty), ImVec2(p1.x - 12.f, p1.y - ThemePx(48.f)), true);
@@ -808,20 +745,19 @@ static void DrawPlugins()
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
     ImGui::TextWrapped("%s", I18nGet("settings.plugins_hint"));
     ImGui::PopStyleColor();
+    PlugSyncAuthors();
     ImGui::Spacing();
-    if (UiButton(I18nGet("plugin.search"), ImVec2(0, 0), g_plug_q[0] ? 1 : 0))
-        g_plug_search_open = true;
+    ImGui::SetNextItemWidth(-ThemePx(196.f));
+    ImGui::InputTextWithHint("##plugq", I18nGet("plugin.search_hint"), g_plug_q, (int)sizeof(g_plug_q));
     ImGui::SameLine();
-    if (UiButton(I18nGet("plugin.filter"), ImVec2(0, 0), PlugFilterDirty() ? 1 : 0))
-        g_plug_filter_open = true;
+    if (UiButton(I18nGet("plugin.filter"), ImVec2(ThemePx(88.f), 0.f), PlugFilterDirty() ? 1 : 0))
+        ImGui::OpenPopup("plugin_filter");
+    DrawPluginFilterPopup();
     ImGui::SameLine();
     if (UiButton(I18nGet("plugin.rescan")))
         PluginRescan();
-    DrawPluginSearchDialog();
-    DrawPluginFilterDialog();
     ImGui::Spacing();
 
-    PlugSyncAuthors();
     int n = PluginCount();
     if (n == 0)
     {
@@ -843,7 +779,7 @@ static void DrawPlugins()
 
     float cell_w = ThemePx(280.f);
     float img_h = ThemePx(140.f);
-    float cell_h = ThemePx(318.f);
+    float cell_h = ThemePx(296.f);
     float gap = ThemePx(16.f);
     float avail = ImGui::GetContentRegionAvail().x;
     int cols = (int)((avail + gap) / (cell_w + gap));

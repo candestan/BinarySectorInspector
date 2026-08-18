@@ -8,29 +8,9 @@
   "confidence": "high",
   "author": "candestan",
   "reference": "https://www.autohotkey.com/",
-  "description": "Ahk2Exe compiled AutoHotkey script. The stub is often MSVC with a Rich header; identity is the AHK runtime plus compiled script overlay/RCDATA.",
+  "description": "Ahk2Exe compiled AutoHotkey script. The stub is often MSVC with a Rich header; identity is AHK runtime markers plus overlay or RCDATA payload.",
   "conditions": {
     "any": [
-      { "string_contains": "autohotkey.com" },
-      { "string_contains": "AutoHotkey" },
-      { "string_contains": "Ahk2Exe" },
-      { "string_contains": ">AUTOHOTKEY SCRIPT<" },
-      { "string_contains": "This script requires AutoHotkey" },
-      {
-        "byte_pattern": "41 00 75 00 74 00 6F 00 48 00 6F 00 74 00 6B 00 65 00 79 00",
-        "where": "file",
-        "weight": 70
-      },
-      {
-        "byte_pattern": "41 75 74 6F 48 6F 74 6B 65 79",
-        "where": "file",
-        "weight": 55
-      },
-      {
-        "byte_pattern": "3E 41 55 54 4F 48 4F 54 4B 45 59 20 53 43 52 49 50 54 3C",
-        "where": "file",
-        "weight": 80
-      },
       {
         "version_string": {
           "key": "ProductName",
@@ -54,6 +34,44 @@
           "key": "OriginalFilename",
           "contains": "Ahk2Exe"
         }
+      },
+      { "string_contains": "This script requires AutoHotkey" },
+      {
+        "all": [
+          { "overlay": { "min_size": 16 } },
+          {
+            "any": [
+              {
+                "byte_pattern": "3E 41 55 54 4F 48 4F 54 4B 45 59 20 53 43 52 49 50 54 3C",
+                "where": "file",
+                "weight": 80
+              },
+              {
+                "byte_pattern": "3E 41 55 54 4F 48 4F 54 4B 45 59 20 53 43 52 49 50 54 3C",
+                "where": "overlay",
+                "weight": 80
+              },
+              { "string_contains": ">AUTOHOTKEY SCRIPT<" },
+              { "string_contains": "autohotkey.com" },
+              { "string_contains": "Ahk2Exe" }
+            ]
+          }
+        ]
+      },
+      {
+        "all": [
+          { "resource_type": "RCDATA" },
+          {
+            "any": [
+              { "resource_name": ">AUTOHOTKEY SCRIPT<" },
+              {
+                "byte_pattern": "3E 41 55 54 4F 48 4F 54 4B 45 59 20 53 43 52 49 50 54 3C",
+                "where": "file",
+                "weight": 80
+              }
+            ]
+          }
+        ]
       }
     ]
   }

@@ -218,7 +218,7 @@
     "plugin.none_match": "No plugins match this search or filter.",
     "plugin.search": "Search",
     "plugin.search_title": "Search plugins",
-    "plugin.search_hint": "Matches plugin name, package id, and authors (fields chosen in Filter).",
+    "plugin.search_hint": "Search name, package id, or author",
     "plugin.search_query": "Query",
     "plugin.search_clear": "Clear",
     "plugin.filter": "Filter",

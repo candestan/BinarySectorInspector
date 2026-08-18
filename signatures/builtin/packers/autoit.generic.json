@@ -8,7 +8,7 @@
   "confidence": "high",
   "author": "candestan",
   "reference": "https://www.autoitscript.com/",
-  "description": "Compiled AutoIt v3 executable: SCRIPT/RCDATA, AU3!EA0x magic, or AutoIt stub strings.",
+  "description": "Compiled AutoIt v3 executable: SCRIPT/RCDATA, AU3!EA0x magic in overlay, or AutoIt stub version strings.",
   "conditions": {
     "any": [
       {
@@ -23,16 +23,6 @@
       },
       {
         "byte_pattern": "41 55 33 21 45 41 30 36",
-        "where": "file",
-        "weight": 70
-      },
-      {
-        "byte_pattern": "41 55 33 21 45 41 30 35",
-        "where": "file",
-        "weight": 70
-      },
-      {
-        "byte_pattern": "41 55 33 21 45 41 30 36",
         "where": "overlay",
         "weight": 70
       },
@@ -42,14 +32,10 @@
         "weight": 70
       },
       { "string_contains": ">>>AUTOIT SCRIPT<<<" },
-      { "string_contains": "AU3!EA06" },
-      { "string_contains": "AU3!EA05" },
       { "string_contains": "AutoIt v3" },
       { "string_contains": "AUT2EXE" },
-      { "string_contains": "autoitscript.com" },
       { "string_contains": "/AutoIt3ExecuteLine" },
       { "string_contains": "/AutoIt3ExecuteScript" },
-      { "string_contains": "This is a compiled AutoIt" },
       { "string_contains": "AutoIt Error" },
       {
         "version_string": {

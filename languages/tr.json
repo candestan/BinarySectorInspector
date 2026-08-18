@@ -218,7 +218,7 @@
     "plugin.none_match": "Arama veya filtreye uyan plugin yok.",
     "plugin.search": "Ara",
     "plugin.search_title": "Plugin ara",
-    "plugin.search_hint": "Isim, paket adi ve yapimcilara bakar (alanlar Filtre dialogunda secilir).",
+    "plugin.search_hint": "Isim, paket adi veya yapimciya gore ara",
     "plugin.search_query": "Sorgu",
     "plugin.search_clear": "Temizle",
     "plugin.filter": "Filtre",
