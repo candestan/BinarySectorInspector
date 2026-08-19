@@ -922,12 +922,14 @@ static void* RecThemeFontMono(void*)
 
 static uint32_t RecThemeCodeColor(void*, uint32_t token_kind)
 {
-    // Keep the mapping conservative; plugins may evolve token kinds over time.
     switch (token_kind)
     {
     case BsiTokKeyword: return ThemeColAccent();
+    case BsiTokMnemonic: return ThemeColFg();
+    case BsiTokBytes: return ThemeColMuted();
     case BsiTokType: return ThemeColInfo();
     case BsiTokFunction: return ThemeColAccent();
+    case BsiTokImport: return ThemeColAccent();
     case BsiTokVariable: return ThemeColMuted();
     case BsiTokParameter: return ThemeColMuted();
     case BsiTokRegister: return ThemeColFg();
@@ -935,7 +937,7 @@ static uint32_t RecThemeCodeColor(void*, uint32_t token_kind)
     case BsiTokNumber:
         return ThemeColInfo();
     case BsiTokAddress:
-        return ThemeColAccent();
+        return ThemeColMuted();
     case BsiTokString:
         return ThemeColSuccess();
     case BsiTokComment:
@@ -943,6 +945,7 @@ static uint32_t RecThemeCodeColor(void*, uint32_t token_kind)
     case BsiTokOperator:
         return ThemeColFg();
     case BsiTokLabel:
+    case BsiTokBranch:
         return ThemeColWarning();
     case BsiTokField:
         return ThemeColMuted();
@@ -953,6 +956,38 @@ static uint32_t RecThemeCodeColor(void*, uint32_t token_kind)
     default:
         return ThemeColFg();
     }
+}
+
+static char g_prog_id[80];
+static char g_prog_title[96];
+static char g_prog_stage[160];
+static float g_prog_frac;
+static int g_prog_cancel;
+
+static void RecProgressSet(void*, const char* task_id, const char* title, const char* stage, float frac)
+{
+    snprintf(g_prog_id, sizeof(g_prog_id), "%s", task_id ? task_id : "");
+    snprintf(g_prog_title, sizeof(g_prog_title), "%s", title ? title : "");
+    snprintf(g_prog_stage, sizeof(g_prog_stage), "%s", stage ? stage : "");
+    g_prog_frac = frac;
+}
+
+static void RecProgressClear(void*, const char* task_id)
+{
+    if (task_id && g_prog_id[0] && strcmp(g_prog_id, task_id) != 0)
+        return;
+    g_prog_id[0] = 0;
+    g_prog_title[0] = 0;
+    g_prog_stage[0] = 0;
+    g_prog_frac = 0.f;
+    g_prog_cancel = 0;
+}
+
+static int RecProgressWantCancel(void*, const char* task_id)
+{
+    if (task_id && g_prog_id[0] && strcmp(g_prog_id, task_id) != 0)
+        return 0;
+    return g_prog_cancel;
 }
 
 static uint64_t RecImageEpoch(void*)
@@ -1238,6 +1273,9 @@ static void FillHost(PluginRec* p)
     p->host.theme_code_color = RecThemeCodeColor;
     p->host.image_epoch = RecImageEpoch;
     p->host.image_dirty = RecImageDirty;
+    p->host.progress_set = RecProgressSet;
+    p->host.progress_clear = RecProgressClear;
+    p->host.progress_want_cancel = RecProgressWantCancel;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

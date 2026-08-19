@@ -106,7 +106,9 @@ enum
     BsiTokLabel,
     BsiTokField,
     BsiTokNamespace,
-    BsiTokUnknown
+    BsiTokUnknown,
+    BsiTokImport,
+    BsiTokBranch
 };
 
 struct BsiPluginInfo
@@ -312,6 +314,11 @@ struct BsiHost
     uint32_t (*theme_code_color)(void* ctx, uint32_t token_kind); // ImU32
     uint64_t (*image_epoch)(void* ctx); // changes on any byte mutation (apply/undo/redo)
     int      (*image_dirty)(void* ctx); // PeJobDirty() -> 0/1
+
+    // Optional analysis progress (additive). frac < 0 = indeterminate.
+    void (*progress_set)(void* ctx, const char* task_id, const char* title, const char* stage, float frac);
+    void (*progress_clear)(void* ctx, const char* task_id);
+    int  (*progress_want_cancel)(void* ctx, const char* task_id);
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.
