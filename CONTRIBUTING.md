@@ -12,6 +12,8 @@ Plugins use `sdk/plugin/bsi_plugin.h` only. Do not `#include` host `src/` from a
 
 User-facing behavior changes should update English and Turkish pages under `docs/` when those pages describe the behavior. Skip doc edits for refactors that do not change product behavior.
 
+Turkish docs keep established reverse-engineering terms in English (PE, section, plugin, overlay, signature). Do not invent calques. Sentences stay Turkish.
+
 Build `BinarySectorInspector.sln` `Release|x64` (and Debug if you touched debug-only paths) before sending a change.
 
 Do not commit `x64/`, `settings.json`, or generated `.dll`/`.pdb`.

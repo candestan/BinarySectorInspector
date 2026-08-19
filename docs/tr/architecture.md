@@ -3,18 +3,18 @@
 [English](../en/architecture.md) | [Türkçe](architecture.md)
 
 ```
-src/app        karşılama, inspector kabuğu, ayarlar, sürüm
-src/engine     Win32 pencere, D3D11, dosya bırakma
-src/pe         eşleme, ayrıştırma, yama, kayıt/yedek
-src/detect     olgular, JSON imza, KUARA bağlacı
-src/analyze    artifakt sağlayıcıları
-src/findings   host bulguları
-src/ui         dock, hex, tema, widget
-src/plugin     LoadLibrary tarama, BsiHost
-src/persist    settings.json, exe yanı yollar
+src/app        welcome, inspector shell, settings, version
+src/engine     Win32 window, D3D11, file drop
+src/pe         map, parse, patch, save/backup
+src/detect     facts, JSON signature, KUARA adapter
+src/analyze    artifact provider'lar
+src/findings   host findings
+src/ui         dock, hex, theme, widget
+src/plugin     LoadLibrary scan, BsiHost
+src/persist    settings.json, exe yanı path'ler
 src/i18n       languages/*.json
-sdk/plugin     genel ABI başlığı + README
-plugins/       altmodüller (Lydis, DecompSnake)
+sdk/plugin     public ABI header + README
+plugins/       submodule'ler (Lydis, DecompSnake)
 ```
 
 ```mermaid
@@ -32,8 +32,8 @@ flowchart TB
   Host --> WS
 ```
 
-**Engine** OS penceresi ve GPU. **App** Welcome / Inspector / Settings. **PE** eşlenen tampon; diğerleri onu okur. **Detection** ve **Findings** ayrı listeler. **Eklentiler** aynı job’u `BsiHost` ile görür (görüntü baytları, hex imleci, toast, ilerleme). `src/` include etmezler.
+**Engine** OS window ve GPU. **App** Welcome / Inspector / Settings. **PE** map edilmiş buffer; diğerleri onu okur. **Detection** ve **Findings** ayrı listeler. **Plugin'ler** aynı job'u `BsiHost` ile görür (image byte'ları, hex cursor, toast, progress). `src/` include etmezler.
 
-Arayüz metni değişince hem `languages/en.json` hem `languages/tr.json` güncellenir.
+UI string değişince hem `languages/en.json` hem `languages/tr.json` güncellenir.
 
-Bu sayfa harita; dosya dosya yorum değil.
+Bu sayfa harita; file-by-file yorum değil.

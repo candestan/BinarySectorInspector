@@ -4,45 +4,45 @@
 
 ```mermaid
 flowchart LR
-  PE[Eşlenen PE] --> Facts[Olgular]
-  Facts --> Det[Tespit]
-  Facts --> An[Analizörler]
+  PE[Mapped PE] --> Facts[Facts]
+  Facts --> Det[Detection]
+  Facts --> An[Analyzers]
   Det --> UI[Detection / Overview]
-  An --> Art[Artifaktlar]
+  An --> Art[Artifacts]
   Facts --> Fin[Findings]
   Art --> UI2[Analysis]
   Fin --> UI3[Findings / Evidence]
 ```
 
-## Olgular
+## Facts
 
-Ayrıştırmadan sonra host olgu modeli doldurur: bölümler, import, overlay, CLR, string, entropi, Rich başlığı ve benzeri PE/.NET alanları. Tespit ve findings bu modeli okur. İkili çalıştırılmaz.
+Parse'tan sonra host fact model'i doldurur: section, import, overlay, CLR, string, entropy, Rich Header ve benzeri PE/.NET alanları. Detection ve Findings bu modeli okur. Binary execute edilmez.
 
-## Tespit
+## Detection
 
-Kurallar `signatures/builtin/` (dağıtılan), `signatures/packs/`, sonra `signatures/user/`. Şema **1** [`signatures/README.md`](../../signatures/README.md) dosyasındadır — yazar referansı orasıdır; bu sayfa yaprak tablosunu tekrar etmez.
+Rule'lar `signatures/builtin/` (shipped), `signatures/packs/`, sonra `signatures/user/`. Schema **1** [`signatures/README.md`](../../signatures/README.md) dosyasındadır — yazar referansı orasıdır; bu sayfa leaf tablosunu tekrar etmez.
 
-Varsayılan eşleştirici **KUARA-Dynamic** (`third_party/kuara_dynamic`, `src/detect/kuara_adapter.cpp`). KUARA kural kümesini derleyemezse uyarı yazar ve dahili eşleştiriciye düşer. Ayarlardan motor zorlanabilir.
+Default matcher **KUARA-Dynamic** (`third_party/kuara_dynamic`, `src/detect/kuara_adapter.cpp`). KUARA rule set'i compile edemezse warning yazar ve internal matcher'a düşer. Settings'ten engine zorlanabilir.
 
-`product_key` birkaç kuralı tek Overview/Detection satırında toplar. `heuristic: true` genel kanıttır, ürün adı değildir.
+`product_key` birkaç rule'u tek Overview/Detection satırında toplar. `heuristic: true` generic evidence'dır, ürün adı değildir.
 
-Yenileme: Settings → Detection (arayüzdeki reload).
+Reload: Settings → Detection.
 
-## Özel analizörler
+## Specialized analyzer'lar
 
-`src/analyze/` altında statik C++ (eklenti değil):
+`src/analyze/` altında static C++ (plugin değil):
 
 - **py2exe** — `PYTHONSCRIPT` marshal
-- **Go** — buildinfo ve pclntab (1.16+ fonksiyon tabloları; eskiler yalnızca tespit)
-- **AutoIt** — SCRIPT / overlay envanteri
-- **AutoHotkey** — Ahk2Exe overlay/RCDATA ve düz metin parçaları
+- **Go** — buildinfo ve pclntab (1.16+ function table; eskiler yalnızca detect)
+- **AutoIt** — SCRIPT / overlay inventory
+- **AutoHotkey** — Ahk2Exe overlay/RCDATA ve plaintext fragment
 
-**Analysis** görünümü genel artifakt ağacı çizer. Packer kimliği JSON imzada kalır.
+**Analysis** view generic artifact tree çizer. Packer kimliği JSON signature'da kalır.
 
 ## Findings
 
-`src/findings/` yapı ve string kalıplarını puanlar. Evidence paneli nedeni gösterir. Detection ürün listesi değildir.
+`src/findings/` structural ve string pattern'lerini skorlar. Evidence panel nedeni gösterir. Detection product listesi değildir.
 
 ## Hex ve RVA
 
-Tespit örüntüleri giriş baytları, tüm dosya veya overlay hedefleyebilir. Hex seçimi her zaman **dosya ofseti**. Eklentiler Hex ile konuşurken `rva_to_off` / `off_to_rva` kullanır.
+Detection pattern'leri entry-point byte'ları, tüm file veya overlay hedefleyebilir. Hex selection her zaman **file offset**. Plugin'ler Hex ile konuşurken `rva_to_off` / `off_to_rva` kullanır.
