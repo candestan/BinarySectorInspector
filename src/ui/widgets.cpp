@@ -11,6 +11,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <windows.h>
+
 bool UiAnimEnabled()
 {
     return SettingsGetBool("animations", true);
@@ -763,6 +765,11 @@ struct UiToastSlot
 
 static UiToastSlot g_toasts[kToastMax];
 
+static double ToastNowSec()
+{
+    return (double)GetTickCount64() * 0.001;
+}
+
 static unsigned ToastDedupHash(UiToastType type, const char* title, const char* body)
 {
     unsigned h = (unsigned)type * 1315423911u;
@@ -792,7 +799,7 @@ void UiToastPush(UiToastType type, const char* title, const char* body)
     if (!title || !title[0])
         return;
     unsigned dedup = ToastDedupHash(type, title, body);
-    double now = ImGui::GetCurrentContext() ? ImGui::GetTime() : 0.0;
+    double now = ToastNowSec();
     for (int i = 0; i < kToastMax; i++)
     {
         if (g_toasts[i].active && g_toasts[i].dedup == dedup)
@@ -861,7 +868,7 @@ void UiToastDraw()
         return;
     ImDrawList* dl = ImGui::GetForegroundDrawList();
     float dt = ImGui::GetIO().DeltaTime;
-    double now = ImGui::GetTime();
+    double now = ToastNowSec();
     float margin = ThemeSpaceMd();
     float tw = ThemeToastWidth();
     float gap = ThemeToastGap();
