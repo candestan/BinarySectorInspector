@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
+#include <vector>
 #include <math.h>
 
 // credit: https://github.com/nlohmann/json (MIT, third_party/nlohmann_json)
@@ -352,6 +353,31 @@ void SettingsLayoutSetBool(const char* key, bool val)
     SettingsMarkDirty();
 }
 
+int SettingsLayoutGetString(const char* key, char* out, int cap, const char* def)
+{
+    const char* src = def ? def : "";
+    nlohmann::json* n = LayoutFind(key);
+    if (n && n->is_string())
+        src = n->get_ref<const std::string&>().c_str();
+    int need = (int)strlen(src) + 1;
+    if (!out || cap <= 0)
+        return need;
+    snprintf(out, cap, "%s", src);
+    return need;
+}
+
+void SettingsLayoutSetString(const char* key, const char* val)
+{
+    if (!key || !key[0])
+        return;
+    const char* v = val ? val : "";
+    nlohmann::json* n = LayoutFind(key);
+    if (n && n->is_string() && n->get_ref<const std::string&>() == v)
+        return;
+    LayoutRoot()[key] = v;
+    SettingsMarkDirty();
+}
+
 static nlohmann::json* TableCols(const char* table, bool create)
 {
     if (!table || !table[0])
@@ -431,15 +457,26 @@ void SettingsLayoutClearTable(const char* table)
 
 void SettingsLayoutResetWorkspace()
 {
-    g_doc.erase("layout");
-    g_doc["view.tree"] = true;
-    g_doc["view.console"] = true;
-    g_doc["view.tree_dock"] = 0;
-    g_doc["view.console_dock"] = 3;
-    g_doc["view.tree_pri"] = 1;
-    g_doc["view.console_pri"] = 0;
+    if (g_doc.contains("layout") && g_doc["layout"].is_object())
+    {
+        g_doc["layout"].erase("imgui");
+        auto& L = g_doc["layout"];
+        std::vector<std::string> drop;
+        for (auto it = L.begin(); it != L.end(); ++it)
+        {
+            if (it.key().compare(0, 11, "ws.visible.") == 0)
+                drop.push_back(it.key());
+        }
+        for (const std::string& k : drop)
+            L.erase(k);
+        L.erase("panel.tree");
+        L.erase("panel.console");
+        L.erase("split.dock_pair");
+    }
     g_doc.erase("view.tree_w");
     g_doc.erase("view.console_h");
+    g_doc.erase("view.tree_dock");
+    g_doc.erase("view.console_dock");
     g_layout_epoch++;
     SettingsSave();
 }

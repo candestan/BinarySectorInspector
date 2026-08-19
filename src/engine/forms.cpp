@@ -1,5 +1,6 @@
 #include "engine/engine_p.h"
 #include "ui/theme.h"
+#include "ui/workspace.h"
 #include "persist/settings.h"
 
 #include "imgui.h"
@@ -256,7 +257,10 @@ Form* SpawnForm(const char* name, int w, int h)
     ImNodes::SetCurrentContext(f->imnodes);
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
     io.IniFilename = nullptr;
+    WorkspaceBindContext();
     ImGui_ImplWin32_Init(hwnd);
     ThemeLoadFonts();
     ThemeApply();

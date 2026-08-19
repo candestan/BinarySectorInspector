@@ -6,6 +6,7 @@
 #include "ui/icons.h"
 #include "ui/tex.h"
 #include "ui/widgets.h"
+#include "ui/workspace.h"
 #include "i18n/i18n.h"
 
 #include "engine/engine.h"
@@ -205,6 +206,7 @@ static void DrawGeneral()
         if (UiButton(I18nGet("settings.layout.reset_ok"), ImVec2(0.f, 0.f), 1))
         {
             SettingsLayoutResetWorkspace();
+            WorkspaceRequestRebuild();
             InspectorReloadLayout();
             UiToastPush(UiToastInfo, I18nGet("toast.layout.reset"), nullptr);
             ImGui::CloseCurrentPopup();

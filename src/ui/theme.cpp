@@ -313,6 +313,8 @@ void ThemeApply()
     s.FrameRounding = kRound;
     s.GrabRounding = kRound;
     s.TabRounding = kRound;
+    s.TabBarOverlineSize = ThemePx(2.f);
+    s.DockingSeparatorSize = ThemePx(3.f);
     s.ScrollbarRounding = kRound;
     s.WindowBorderSize = 0.f;
     s.ChildBorderSize = 1.f;
@@ -373,6 +375,12 @@ void ThemeApply()
     c[ImGuiCol_Tab]                   = T(kMuted);
     c[ImGuiCol_TabHovered]            = T(kBorder);
     c[ImGuiCol_TabSelected]           = T(kCard);
+    c[ImGuiCol_TabSelectedOverline]   = T(kAccent);
+    c[ImGuiCol_TabDimmed]             = T(kBg);
+    c[ImGuiCol_TabDimmedSelected]     = T(kCard);
+    c[ImGuiCol_TabDimmedSelectedOverline] = T(kAccent, 0.55f);
+    c[ImGuiCol_DockingPreview]        = T(kAccent, 0.35f);
+    c[ImGuiCol_DockingEmptyBg]        = T(kBg);
     c[ImGuiCol_PlotLines]             = T(kAccent);
     c[ImGuiCol_PlotHistogram]         = T(kAccent);
     c[ImGuiCol_TableHeaderBg]         = T(kMuted);

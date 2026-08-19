@@ -4,6 +4,13 @@
 
 bool  UiAnimEnabled();
 float UiEaseOut(float t);
+enum { UiAnimFastMs = 120, UiAnimNormalMs = 180 };
+inline float UiAnimSpeedMs(int ms)
+{
+    if (ms < 1)
+        ms = 1;
+    return 1000.f / (float)ms;
+}
 float UiHoverT(unsigned int id, bool hovered);
 float UiAnimToward(unsigned int id, float target, float speed);
 float UiReveal(unsigned int id, bool active, float speed);

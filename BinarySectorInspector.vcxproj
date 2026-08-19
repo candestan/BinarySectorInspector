@@ -112,6 +112,8 @@
     <ClCompile Include="src\ui\tex.cpp" />
     <ClCompile Include="src\ui\icons.cpp" />
     <ClCompile Include="src\ui\widgets.cpp" />
+    <ClCompile Include="src\ui\workspace.cpp" />
+    <ClCompile Include="src\ui\selection.cpp" />
     <ClCompile Include="src\ui\hex_view.cpp" />
     <ClCompile Include="src\i18n\i18n.cpp" />
     <ClCompile Include="src\persist\settings.cpp" />
@@ -184,6 +186,8 @@
     <ClInclude Include="src\ui\tex.h" />
     <ClInclude Include="src\ui\icons.h" />
     <ClInclude Include="src\ui\widgets.h" />
+    <ClInclude Include="src\ui\workspace.h" />
+    <ClInclude Include="src\ui\selection.h" />
     <ClInclude Include="src\i18n\i18n.h" />
     <ClInclude Include="src\persist\settings.h" />
     <ClInclude Include="src\persist\paths.h" />

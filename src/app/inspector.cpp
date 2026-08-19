@@ -7,6 +7,8 @@
 #include "ui/icons.h"
 #include "ui/widgets.h"
 #include "ui/console_view.h"
+#include "ui/workspace.h"
+#include "ui/selection.h"
 #include "ui/tex.h"
 #include "i18n/i18n.h"
 #include "persist/settings.h"
@@ -36,6 +38,7 @@
 #endif
 
 static char g_sel[96] = "overview";
+static const char* SelCaption();
 static int g_icon_sel = 0;
 static unsigned g_dirt;
 static int g_rsrc_kind; // 0 all, 1 version, 2 icons, 3 com
@@ -59,23 +62,6 @@ static int g_patch_row = -1;
 static char g_save_dst[MAX_PATH];
 static char g_con[14][192];
 static int g_con_n;
-
-enum
-{
-    DockLeft = 0,
-    DockRight = 1,
-    DockTop = 2,
-    DockBottom = 3,
-};
-
-static bool  g_tree_on = true;
-static bool  g_cons_on = true;
-static int   g_tree_dock = DockLeft;
-static int   g_cons_dock = DockBottom;
-static float g_tree_sz = 248.f;
-static float g_cons_sz = 148.f;
-static int   g_tree_pri = 1;
-static int   g_cons_pri = 0;
 
 static const float kSplitListFrac = 0.36f;
 static float g_split_sec;
@@ -124,36 +110,6 @@ static void LoadViewLayout()
         return;
     g_layout_loaded = true;
     g_layout_seen_epoch = epoch;
-    g_tree_on = SettingsGetBool("view.tree", true);
-    g_cons_on = SettingsGetBool("view.console", true);
-    g_tree_dock = SettingsGetInt("view.tree_dock", DockLeft);
-    g_cons_dock = SettingsGetInt("view.console_dock", DockBottom);
-    if (SettingsLayoutHas("panel.tree"))
-        g_tree_sz = LayoutPx("panel.tree", 248.f);
-    else
-    {
-        int tw = SettingsGetInt("view.tree_w", (int)ThemePx(248.f));
-        g_tree_sz = (float)tw;
-    }
-    if (SettingsLayoutHas("panel.console"))
-        g_cons_sz = LayoutPx("panel.console", 148.f);
-    else
-    {
-        int ch = SettingsGetInt("view.console_h", (int)ThemePx(148.f));
-        g_cons_sz = (float)ch;
-    }
-    float tmin = ThemeTreeMinW();
-    float cmin = ThemePx(72.f);
-    if (g_tree_sz < tmin)
-        g_tree_sz = tmin;
-    if (g_cons_sz < cmin)
-        g_cons_sz = cmin;
-    g_tree_pri = SettingsGetInt("view.tree_pri", 1);
-    g_cons_pri = SettingsGetInt("view.console_pri", 0);
-    if (g_tree_dock < 0 || g_tree_dock > 3)
-        g_tree_dock = DockLeft;
-    if (g_cons_dock < 0 || g_cons_dock > 3)
-        g_cons_dock = DockBottom;
     g_split_sec = SettingsLayoutHas("split.sections") ? LayoutPx("split.sections", 220.f) : 0.f;
     g_split_imp = SettingsLayoutHas("split.imports") ? LayoutPx("split.imports", 220.f) : 0.f;
     g_split_an = SettingsLayoutHas("split.analysis") ? LayoutPx("split.analysis", 220.f) : 0.f;
@@ -282,8 +238,24 @@ static void DoSave(bool save_as)
 
 static void GoHex(uint32_t off)
 {
-    InspectorSelect("hex");
-    HexViewGoto(off);
+    NavOpenInHex(off);
+}
+
+static const char* ViewForSel(const char* id)
+{
+    if (!id || !id[0])
+        return "view.overview";
+    if (strcmp(id, "overview") == 0)
+        return "view.overview";
+    if (strcmp(id, "hex") == 0)
+        return "view.hex";
+    if (strcmp(id, "findings") == 0)
+        return "view.findings";
+    if (strcmp(id, "detection") == 0)
+        return "view.detection";
+    if (PluginSelIsView(id))
+        return id;
+    return "view.document";
 }
 
 void InspectorSelect(const char* id)
@@ -293,6 +265,10 @@ void InspectorSelect(const char* id)
     if (strcmp(g_sel, id) != 0)
         LogDebug(LogBuiltinUI, "Selection: %s", id);
     snprintf(g_sel, sizeof(g_sel), "%s", id);
+    SelectionSet("node", id, SelCaption(), nullptr, 0, 0);
+    const char* view = ViewForSel(id);
+    WorkspaceSetVisible(view, true);
+    WorkspaceFocus(view);
 }
 
 static const char* FileNameOf(const char* path)
@@ -579,53 +555,6 @@ static void TopMenuEnd()
     ImGui::PopID();
 }
 
-static void ViewDockMenu(const char* title, bool* vis, int* dock, int* pri,
-    const char* kvis, const char* kdock, const char* kpri, const char* ksz)
-{
-    (void)ksz;
-    if (!ImGui::BeginMenu(title))
-        return;
-    if (ImGui::MenuItem(I18nGet("view.visible"), nullptr, *vis))
-    {
-        *vis = !*vis;
-        SettingsSetBool(kvis, *vis);
-        LogDebug(LogBuiltinUI, "%s %s", title, *vis ? "shown" : "hidden");
-    }
-    ImGui::Separator();
-    if (ImGui::BeginMenu(I18nGet("view.dock")))
-    {
-        const char* labs[4] = {
-            I18nGet("view.dock_left"), I18nGet("view.dock_right"),
-            I18nGet("view.dock_top"), I18nGet("view.dock_bottom")
-        };
-        for (int d = 0; d < 4; d++)
-        {
-            if (ImGui::MenuItem(labs[d], nullptr, *dock == d))
-            {
-                *dock = d;
-                SettingsSetInt(kdock, d);
-                LogDebug(LogBuiltinUI, "%s dock %s", title, labs[d]);
-            }
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu(I18nGet("view.priority")))
-    {
-        for (int p = 0; p <= 2; p++)
-        {
-            char lab[8];
-            snprintf(lab, sizeof(lab), "%d", p);
-            if (ImGui::MenuItem(lab, nullptr, *pri == p))
-            {
-                *pri = p;
-                SettingsSetInt(kpri, p);
-            }
-        }
-        ImGui::EndMenu();
-    }
-    ImGui::EndMenu();
-}
-
 static void DrawMenubar()
 {
     ImVec2 p0 = ImGui::GetCursorScreenPos();
@@ -720,22 +649,7 @@ static void DrawMenubar()
     ImGui::SameLine(0.f, 0.f);
     if (TopMenu("view", I18nGet("menu.view")))
     {
-        ViewDockMenu(I18nGet("view.tree"), &g_tree_on, &g_tree_dock, &g_tree_pri,
-            "view.tree", "view.tree_dock", "view.tree_pri", "view.tree_w");
-        ViewDockMenu(I18nGet("view.console"), &g_cons_on, &g_cons_dock, &g_cons_pri,
-            "view.console", "view.console_dock", "view.console_pri", "view.console_h");
-        int pv = PluginViewCount();
-        if (pv > 0)
-        {
-            ImGui::Separator();
-            for (int i = 0; i < pv; i++)
-            {
-                char id[32];
-                PluginViewSelId(i, id, (int)sizeof(id));
-                if (ImGui::MenuItem(PluginViewLabel(i), nullptr, false, ready && !locked))
-                    InspectorSelect(id);
-            }
-        }
+        WorkspaceDrawViewMenu(ready, locked);
         TopMenuEnd();
     }
     ImGui::SameLine(0.f, 0.f);
@@ -2744,6 +2658,8 @@ static void DrawDetection(const PeFile* pe)
         bool open = ImGui::TreeNodeEx("row",
             ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_FramePadding,
             "%s", title);
+        if (ImGui::IsItemClicked())
+            SelectionSet("detection", r.product_key.c_str(), title, r.description.c_str(), 0, 0);
         ImVec2 after = ImGui::GetCursorScreenPos();
         ImVec2 rmin = ImGui::GetItemRectMin();
         ImVec2 rmax = ImGui::GetItemRectMax();
@@ -2982,7 +2898,10 @@ static void DrawFindings(const PeFile* pe)
             float w = ImGui::GetContentRegionAvail().x;
             bool sel = (g_find_sel == idx);
             if (ImGui::Selectable("##sh", sel, 0, ImVec2(w, row_h)))
+            {
                 g_find_sel = idx;
+                SelectionSet("finding", f.id, FindingText(f.title_key), f.evidence_text, f.file_off, 0);
+            }
             UiHandIfHovered();
             ImVec2 q = ImGui::GetItemRectMax();
             float ht = UiHoverT(ImGui::GetItemID(), ImGui::IsItemHovered() || sel);
@@ -3043,7 +2962,10 @@ static void DrawFindings(const PeFile* pe)
                     bool sel = (g_find_sel == i);
                     if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
                         ImVec2(0.f, row_h)))
+                    {
                         g_find_sel = i;
+                        SelectionSet("finding", f.id, FindingText(f.title_key), f.evidence_text, f.file_off, 0);
+                    }
                     ImVec2 ra = ImGui::GetItemRectMin();
                     ImVec2 rb = ImGui::GetItemRectMax();
                     ImGui::GetWindowDrawList()->AddRectFilled(ra, ImVec2(ra.x + ThemePx(3.f), rb.y),
@@ -3480,7 +3402,7 @@ static void FillBody()
         fade_t = 1.f;
     else
     {
-        fade_t += ImGui::GetIO().DeltaTime * 6.5f;
+        fade_t += ImGui::GetIO().DeltaTime * UiAnimSpeedMs(UiAnimNormalMs);
         if (fade_t > 1.f)
             fade_t = 1.f;
     }
@@ -3519,112 +3441,258 @@ static void FillCons()
     ConsoleViewDraw();
 }
 
-static void HostPane(const char* id, ImVec2 sz, int which)
+static bool DrawJobGate()
 {
-    if (which == 0)
+    if (PeJobBusy())
     {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceSm(), ThemeSpaceSm()));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(10.f), ThemeSpaceXs()));
+        ImVec2 avail = ImGui::GetContentRegionAvail();
+        ImVec2 c(ImGui::GetCursorScreenPos().x + avail.x * 0.5f,
+            ImGui::GetCursorScreenPos().y + (avail.y > 8.f ? avail.y * 0.42f : ThemePx(40.f)));
+        float p = PeJobProgress();
+        UiSpinner(c, ThemePx(28.f), p);
+        const char* msg = I18nGet("pe.analyzing");
+        ImVec2 ts = ImGui::CalcTextSize(msg);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddText(ImVec2(c.x - ts.x * 0.5f, c.y + ThemePx(40.f)), ThemeColMuted(), msg);
+        return false;
     }
-    ImGuiChildFlags flags = ImGuiChildFlags_Borders;
-    if (which == 0)
-        flags |= ImGuiChildFlags_AlwaysUseWindowPadding;
-    ImGui::BeginChild(id, sz, flags);
-    if (which == 0)
-        FillTree();
-    else
-        FillCons();
-    ImGui::EndChild();
-    if (which == 0)
-        ImGui::PopStyleVar(2);
+    if (PeJobFailed())
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColAccent()));
+        ImGui::TextWrapped("%s", PeJobError()[0] ? PeJobError() : I18nGet("pe.fail"));
+        ImGui::PopStyleColor();
+        return false;
+    }
+    return PeJobResult() != nullptr;
 }
 
-static void HostPair(const char* id, ImVec2 sz, int a, int b, bool stack_vert)
+static void DrawWsNavigator()
 {
-    ImGui::BeginChild(id, sz, ImGuiChildFlags_None);
-    if (stack_vert)
-    {
-        float avail = ImGui::GetContentRegionAvail().y;
-        float h = avail * g_pair_frac;
-        if (h < ThemePx(72.f))
-            h = ThemePx(72.f);
-        if (h > avail - ThemePx(72.f))
-            h = avail - ThemePx(72.f);
-        HostPane("p0", ImVec2(0.f, h), a);
-        SplitH("pair", &h, nullptr, 1.f, ThemePx(72.f));
-        if (avail > 1.f)
-        {
-            g_pair_frac = h / avail;
-            if (g_pair_frac < 0.2f)
-                g_pair_frac = 0.2f;
-            if (g_pair_frac > 0.8f)
-                g_pair_frac = 0.8f;
-            if (ImGui::IsItemDeactivated())
-                SettingsLayoutSet("split.dock_pair", g_pair_frac);
-        }
-        HostPane("p1", ImVec2(0.f, 0.f), b);
-    }
-    else
-    {
-        float avail = ImGui::GetContentRegionAvail().x;
-        float w = avail * g_pair_frac;
-        if (w < ThemePx(80.f))
-            w = ThemePx(80.f);
-        if (w > avail - ThemePx(80.f))
-            w = avail - ThemePx(80.f);
-        HostPane("p0", ImVec2(w, 0.f), a);
-        ImGui::SameLine(0.f, 0.f);
-        SplitV("pair", &w, nullptr, 1.f, ThemePx(80.f));
-        ImGui::SameLine(0.f, 0.f);
-        if (avail > 1.f)
-        {
-            g_pair_frac = w / avail;
-            if (g_pair_frac < 0.2f)
-                g_pair_frac = 0.2f;
-            if (g_pair_frac > 0.8f)
-                g_pair_frac = 0.8f;
-            if (ImGui::IsItemDeactivated())
-                SettingsLayoutSet("split.dock_pair", g_pair_frac);
-        }
-        HostPane("p1", ImVec2(0.f, 0.f), b);
-    }
-    ImGui::EndChild();
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceSm(), ThemeSpaceSm()));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ThemePx(10.f), ThemeSpaceXs()));
+    FillTree();
+    ImGui::PopStyleVar(2);
 }
 
-static void DockStrip(int dock, bool as_row)
+static void DrawWsOverview()
 {
-    bool t = g_tree_on && g_tree_dock == dock;
-    bool c = g_cons_on && g_cons_dock == dock;
-    if (!t && !c)
+    if (!DrawJobGate())
         return;
-    int first = 0, second = 1;
-    if (t && c && g_cons_pri > g_tree_pri)
+    DrawOverview(PeJobResult());
+}
+
+static void DrawWsHex()
+{
+    if (!DrawJobGate())
+        return;
+    DrawHex();
+}
+
+static void DrawWsFindings()
+{
+    if (!DrawJobGate())
+        return;
+    DrawFindings(PeJobResult());
+}
+
+static void DrawWsDetection()
+{
+    if (!DrawJobGate())
+        return;
+    DrawDetection(PeJobResult());
+}
+
+static void DrawWsDocument()
+{
+    FillBody();
+}
+
+static void DrawWsConsole()
+{
+    FillCons();
+}
+
+static void DrawWsPlugin()
+{
+    if (!DrawJobGate())
+        return;
+    PluginDrawView(WorkspaceCurrentId());
+}
+
+static void DrawWsProperties()
+{
+    const Selection& s = SelectionGet();
+    if (!s.kind[0])
     {
-        first = 1;
-        second = 0;
+        UiEmpty(I18nGet("panel.properties.empty"), I18nGet("panel.properties.empty_hint"));
+        return;
     }
-    float tsz = g_tree_sz;
-    float csz = g_cons_sz;
-    if (as_row)
+    UiSection(I18nGet("panel.properties"));
+    ImGui::TextUnformatted(s.title[0] ? s.title : s.id);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+    ImGui::TextUnformatted(s.kind);
+    if (s.id[0] && strcmp(s.id, s.title) != 0)
+        ImGui::TextUnformatted(s.id);
+    ImGui::PopStyleColor();
+    if (s.off)
+        FieldU(I18nGet("pe.col.offset"), s.off, true, I18nGet("help.fld.rsrcoff"));
+    if (s.size)
+        FieldU(I18nGet("pe.col.size"), s.size, false, nullptr);
+    size_t hoff = 0, hn = 0;
+    if (HexViewCursor(&hoff, &hn) && hn)
+        FieldU(I18nGet("pe.hex"), (uint64_t)hoff, true, nullptr);
+}
+
+static void DrawWsEvidence()
+{
+    const Selection& s = SelectionGet();
+    if (!s.body[0] && strcmp(s.kind, "finding") != 0 && strcmp(s.kind, "detection") != 0)
     {
-        if (t && c)
-            HostPair("strip", ImVec2(0.f, tsz + csz), first, second, true);
-        else if (t)
-            HostPane("strip_t", ImVec2(0.f, tsz), 0);
-        else
-            HostPane("strip_c", ImVec2(0.f, csz), 1);
+        UiEmpty(I18nGet("panel.evidence.empty"), I18nGet("panel.evidence.empty_hint"));
+        return;
     }
-    else
+    UiSection(I18nGet("panel.evidence"));
+    if (s.body[0])
+        ImGui::TextWrapped("%s", s.body);
+    const PeFile* pe = PeJobResult();
+    if (pe && strcmp(s.kind, "finding") == 0 && g_find_sel >= 0 &&
+        g_find_sel < (int)pe->report.findings.size())
     {
-        float w = tsz;
-        if (c && (!t || csz > w))
-            w = csz;
-        if (t && c)
-            HostPair("col", ImVec2(w, 0.f), first, second, true);
-        else if (t)
-            HostPane("col_t", ImVec2(w, 0.f), 0);
-        else
-            HostPane("col_c", ImVec2(w, 0.f), 1);
+        const FindingItem& f = pe->report.findings[(size_t)g_find_sel];
+        if (f.evidence_text[0] && strcmp(f.evidence_text, s.body) != 0)
+        {
+            ImGui::Spacing();
+            ImGui::TextWrapped("%s", f.evidence_text);
+        }
+        if (f.file_off && UiButton(I18nGet("finding.action.open_hex")))
+            NavOpenInHex(f.file_off);
+    }
+    if (pe && strcmp(s.kind, "detection") == 0)
+    {
+        for (const DetectionResult& r : pe->detections)
+        {
+            if (r.product_key != s.id && r.product != s.title)
+                continue;
+            for (const DetectEvidence& e : r.evidence)
+            {
+                ImGui::BulletText("%s", e.detail.empty() ? e.condition.c_str() : e.detail.c_str());
+            }
+            break;
+        }
+    }
+}
+
+static bool DirtyHex()
+{
+    return PaneDirty();
+}
+
+static void EnsureViews()
+{
+    static bool core;
+    if (!core)
+    {
+        core = true;
+        WsDesc d{};
+        d.id = "panel.navigator";
+        d.title_key = "view.navigator";
+        d.icon = IconTree;
+        d.def_region = WsLeft;
+        d.utility = true;
+        d.closable = true;
+        d.draw = DrawWsNavigator;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "view.overview";
+        d.title_key = "pe.overview";
+        d.icon = IconFile;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsOverview;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "view.hex";
+        d.title_key = "pe.hex";
+        d.icon = IconHex;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsHex;
+        d.dirty = DirtyHex;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "view.findings";
+        d.title_key = "pe.findings";
+        d.icon = IconEye;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsFindings;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "view.detection";
+        d.title_key = "detect.title";
+        d.icon = IconShield;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsDetection;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "view.document";
+        d.title_key = "view.document";
+        d.icon = IconFile;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsDocument;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "panel.properties";
+        d.title_key = "panel.properties";
+        d.icon = IconInfo;
+        d.def_region = WsRight;
+        d.utility = true;
+        d.closable = true;
+        d.draw = DrawWsProperties;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "panel.evidence";
+        d.title_key = "panel.evidence";
+        d.icon = IconSearch;
+        d.def_region = WsRight;
+        d.utility = true;
+        d.closable = true;
+        d.draw = DrawWsEvidence;
+        WorkspaceRegister(d);
+
+        d = WsDesc{};
+        d.id = "panel.console";
+        d.title_key = "view.console";
+        d.icon = IconEdit;
+        d.def_region = WsBottom;
+        d.utility = true;
+        d.closable = true;
+        d.draw = DrawWsConsole;
+        WorkspaceRegister(d);
+    }
+
+    int pv = PluginViewCount();
+    for (int i = 0; i < pv; i++)
+    {
+        char id[32];
+        PluginViewSelId(i, id, (int)sizeof(id));
+        WsDesc d{};
+        d.id = id;
+        d.title_lit = PluginViewLabel(i);
+        d.icon = IconSearch;
+        d.def_region = WsCenter;
+        d.closable = true;
+        d.draw = DrawWsPlugin;
+        WorkspaceRegister(d);
     }
 }
 
@@ -3694,6 +3762,7 @@ void InspectorDraw()
 {
     TickSave();
     LoadViewLayout();
+    EnsureViews();
     if (!g_save_phase)
     {
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O))
@@ -3715,90 +3784,9 @@ void InspectorDraw()
     av.y -= status_h;
     if (av.y < ThemePx(80.f))
         av.y = ThemePx(80.f);
-    if (g_tree_sz > av.x * 0.6f)
-        g_tree_sz = av.x * 0.6f;
-    if (g_cons_sz > av.y * 0.55f)
-        g_cons_sz = av.y * 0.55f;
 
-    bool top = (g_tree_on && g_tree_dock == DockTop) || (g_cons_on && g_cons_dock == DockTop);
-    bool bot = (g_tree_on && g_tree_dock == DockBottom) || (g_cons_on && g_cons_dock == DockBottom);
-    float top_h = 0.f;
-    float bot_h = 0.f;
-    if (g_tree_on && g_tree_dock == DockTop)
-        top_h += g_tree_sz;
-    if (g_cons_on && g_cons_dock == DockTop)
-        top_h += g_cons_sz;
-    if (g_tree_on && g_tree_dock == DockBottom)
-        bot_h += g_tree_sz;
-    if (g_cons_on && g_cons_dock == DockBottom)
-        bot_h += g_cons_sz;
-
-    float hit = ThemeSplitHit();
-    float mid_h = av.y - (top ? top_h + hit : 0.f) - (bot ? bot_h + hit : 0.f);
-    if (mid_h < ThemePx(64.f))
-        mid_h = ThemePx(64.f);
-
-    if (top)
-    {
-        DockStrip(DockTop, true);
-        float* tsz = (g_tree_on && g_tree_dock == DockTop) ? &g_tree_sz : &g_cons_sz;
-        const char* tkey = (g_tree_on && g_tree_dock == DockTop) ? "panel.tree" : "panel.console";
-        SplitH("tsplit", tsz, tkey, 1.f, ThemePx(72.f));
-    }
-
-    ImGui::BeginChild("mid", ImVec2(av.x, mid_h), ImGuiChildFlags_None);
-    bool left = (g_tree_on && g_tree_dock == DockLeft) || (g_cons_on && g_cons_dock == DockLeft);
-    bool right = (g_tree_on && g_tree_dock == DockRight) || (g_cons_on && g_cons_dock == DockRight);
-    if (left)
-    {
-        DockStrip(DockLeft, false);
-        ImGui::SameLine(0.f, 0.f);
-        float* sz = (g_tree_on && g_tree_dock == DockLeft) ? &g_tree_sz : &g_cons_sz;
-        const char* key = (g_tree_on && g_tree_dock == DockLeft) ? "panel.tree" : "panel.console";
-        SplitV("lsplit", sz, key, 1.f, ThemeTreeMinW());
-        ImGui::SameLine(0.f, 0.f);
-    }
-
-    float right_w = 0.f;
-    if (g_tree_on && g_tree_dock == DockRight)
-        right_w = g_tree_sz;
-    if (g_cons_on && g_cons_dock == DockRight)
-    {
-        if (!right_w || g_cons_sz > right_w)
-            right_w = g_cons_sz;
-    }
-    float body_w = ImGui::GetContentRegionAvail().x - (right ? right_w + ThemeSplitHit() : 0.f);
-    if (body_w < ThemePx(80.f))
-        body_w = ThemePx(80.f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ThemeSpaceLg(), ThemeSpaceMd()));
-    ImGui::BeginChild("pe_body", ImVec2(body_w, 0.f), ImGuiChildFlags_AlwaysUseWindowPadding);
-    FillBody();
-    ImGui::EndChild();
-    ImGui::PopStyleVar();
-    if (PaneDirty())
-    {
-        ImVec2 a = ImGui::GetItemRectMin();
-        ImVec2 b = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddRect(a, b, ThemeColAccent(), 0.f, 0, 2.f);
-    }
-    if (right)
-    {
-        ImGui::SameLine(0.f, 0.f);
-        float* sz = (g_tree_on && g_tree_dock == DockRight) ? &g_tree_sz : &g_cons_sz;
-        const char* key = (g_tree_on && g_tree_dock == DockRight) ? "panel.tree" : "panel.console";
-        SplitV("rsplit", sz, key, -1.f, ThemeTreeMinW());
-        ImGui::SameLine(0.f, 0.f);
-        DockStrip(DockRight, false);
-    }
-    ImGui::EndChild();
-
-    if (bot)
-    {
-        float* sz = (g_cons_on && g_cons_dock == DockBottom) ? &g_cons_sz : &g_tree_sz;
-        const char* key = (g_cons_on && g_cons_dock == DockBottom) ? "panel.console" : "panel.tree";
-        SplitH("bsplit", sz, key, -1.f, ThemePx(72.f));
-        DockStrip(DockBottom, true);
-    }
+    WorkspaceDraw(ImVec2(av.x, av.y));
+    WorkspaceTickSave();
 
     DrawStatusBar();
     DrawSaveOverlay();

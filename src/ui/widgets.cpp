@@ -58,7 +58,7 @@ float UiHoverT(unsigned int id, bool hovered)
     ImGuiID key = (ImGuiID)id;
     float t = st->GetFloat(key, 0.f);
     float dt = ImGui::GetIO().DeltaTime;
-    float k = 1.f - expf(-14.f * dt);
+    float k = 1.f - expf(-UiAnimSpeedMs(UiAnimFastMs) * dt);
     t += (target - t) * k;
     st->SetFloat(key, t);
     return UiEaseOut(t);

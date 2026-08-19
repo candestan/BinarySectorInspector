@@ -43,6 +43,8 @@ int  SettingsLayoutGetInt(const char* key, int def);
 void SettingsLayoutSetInt(const char* key, int val);
 bool SettingsLayoutGetBool(const char* key, bool def);
 void SettingsLayoutSetBool(const char* key, bool val);
+int  SettingsLayoutGetString(const char* key, char* out, int cap, const char* def);
+void SettingsLayoutSetString(const char* key, const char* val);
 bool SettingsLayoutHasCol(const char* table, const char* col);
 float SettingsLayoutColW(const char* table, const char* col, float def);
 void SettingsLayoutSetColW(const char* table, const char* col, float logical);
