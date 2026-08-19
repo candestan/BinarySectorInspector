@@ -101,6 +101,7 @@
     <ClCompile Include="src\app\settings_page.cpp" />
     <ClCompile Include="src\app\version.cpp" />
     <ClCompile Include="src\app\inspector.cpp" />
+    <ClCompile Include="src\app\inspector_analysis.cpp" />
     <ClCompile Include="src\engine\engine.cpp" />
     <ClCompile Include="src\engine\device.cpp" />
     <ClCompile Include="src\engine\window.cpp" />
@@ -177,6 +178,7 @@
     <ClInclude Include="src\app\quotes.h" />
     <ClInclude Include="src\app\settings_page.h" />
     <ClInclude Include="src\app\inspector.h" />
+    <ClInclude Include="src\app\inspector_internal.h" />
     <ClInclude Include="src\engine\engine.h" />
     <ClInclude Include="src\engine\engine_p.h" />
     <ClInclude Include="src\log\log.h" />

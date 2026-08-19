@@ -6,6 +6,11 @@
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int)
 {
+    // Drop the cwd and PATH from the module search order before anything is loaded.
+    // We open untrusted files from arbitrary folders, so a stray dll next to a sample
+    // must never win over the real one.
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+
     bool force_sw = false;
     char pending[8][MAX_PATH];
     int pending_n = 0;

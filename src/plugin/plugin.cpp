@@ -85,6 +85,47 @@ struct PluginRec
 static std::vector<PluginRec> g_plugins;
 static bool g_inited;
 
+// Plugins are third-party code in our address space. A fault there must not take the
+// host down. __try needs a frame that does not unwind C++ objects, so every call
+// across the ABI goes through these two instead of being invoked directly.
+template <typename R, typename... A, typename... V>
+static bool PlugCall(R* out, R (*fn)(A...), V... args)
+{
+    __try
+    {
+        *out = fn(args...);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+template <typename... A, typename... V>
+static bool PlugCallVoid(void (*fn)(A...), V... args)
+{
+    __try
+    {
+        fn(args...);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+static void PlugFaulted(PluginRec* p, const char* what)
+{
+    if (!p)
+        return;
+    snprintf(p->err, sizeof(p->err), "faulted in %s", what);
+    p->inited = false;
+    p->enabled = false;
+    LogFor(LogBuiltinCore).Module("Plugin").Error("Disabled %s after a fault in %s", p->name, what);
+}
+
 static void EnableKey(const char* id, char* out, int cap)
 {
     snprintf(out, cap, "plugin.enabled.%s", id ? id : "");
@@ -1377,7 +1418,9 @@ static void AttachVisuals(PluginRec* p)
     p->cover_path[0] = 0;
     if (p->visuals)
     {
-        const BsiVisuals* v = p->visuals();
+        const BsiVisuals* v = nullptr;
+        if (!PlugCall(&v, p->visuals))
+            v = nullptr;
         if (v && v->size >= (uint32_t)BSI_FIELD_END(struct BsiVisuals, icon))
             TakeSpec(p, v->icon, p->icon_path, (int)sizeof(p->icon_path), 0);
         if (v && v->size >= (uint32_t)BSI_FIELD_END(struct BsiVisuals, cover))
@@ -1438,8 +1481,8 @@ static void* LazyTex(PluginRec* p, int cover, int* w, int* h)
 
 static void UnloadOne(PluginRec& p)
 {
-    if (p.inited && p.shutdown)
-        p.shutdown();
+    if (p.inited && p.shutdown && !PlugCallVoid(p.shutdown))
+        PlugFaulted(&p, "shutdown");
     p.inited = false;
     ReleaseSrv(&p.icon_srv);
     ReleaseSrv(&p.cover_srv);
@@ -1457,7 +1500,10 @@ static bool LoadDll(const char* path)
         if (_stricmp(have.path, path) == 0)
             return false;
     }
-    HMODULE h = LoadLibraryA(path);
+    // Pin where the plugin's own dependencies may come from: its own folder, the exe
+    // folder (bsi_imgui.dll), and System32. Never the cwd or PATH.
+    HMODULE h = LoadLibraryExA(path, nullptr,
+        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!h)
     {
         auto log = LogFor(LogBuiltinCore).Module("Plugin");
@@ -1472,7 +1518,14 @@ static bool LoadDll(const char* path)
         FreeLibrary(h);
         return false;
     }
-    const BsiPluginInfo* info = get_info();
+    const BsiPluginInfo* info = nullptr;
+    if (!PlugCall(&info, get_info))
+    {
+        auto log = LogFor(LogBuiltinCore).Module("Plugin");
+        log.Warning("Skipped %s (fault in BsiPluginGetInfo)", path);
+        FreeLibrary(h);
+        return false;
+    }
     if (!info || !info->id || !info->id[0] ||
         info->abi_version < BSI_PLUGIN_ABI_MIN ||
         info->abi_version > BSI_PLUGIN_ABI_VERSION)
@@ -1516,7 +1569,10 @@ static bool LoadDll(const char* path)
     log.Info("Found %s %s (%s)", slot.name, slot.version, slot.id);
     if (slot.enabled && slot.init)
     {
-        if (slot.init(&slot.host) == 0)
+        int rc = -1;
+        if (!PlugCall(&rc, slot.init, &slot.host))
+            PlugFaulted(&slot, "init");
+        else if (rc == 0)
         {
             slot.inited = true;
             log.Success("Enabled %s", slot.name);
@@ -1592,8 +1648,8 @@ void PluginNotifyJob(int ready)
 {
     for (PluginRec& p : g_plugins)
     {
-        if (p.enabled && p.inited && p.on_job)
-            p.on_job(ready);
+        if (p.enabled && p.inited && p.on_job && !PlugCallVoid(p.on_job, ready))
+            PlugFaulted(&p, "on_job");
     }
 }
 
@@ -1643,7 +1699,13 @@ void PluginSetEnabled(int i, bool on)
         p->enabled = true;
         if (!p->inited && p->init)
         {
-            if (p->init(&p->host) == 0)
+            int rc = -1;
+            if (!PlugCall(&rc, p->init, &p->host))
+            {
+                PlugFaulted(p, "init");
+                SettingsSetBool(key, false);
+            }
+            else if (rc == 0)
             {
                 p->inited = true;
                 p->err[0] = 0;
@@ -1660,8 +1722,8 @@ void PluginSetEnabled(int i, bool on)
     }
     else
     {
-        if (p->inited && p->shutdown)
-            p->shutdown();
+        if (p->inited && p->shutdown && !PlugCallVoid(p->shutdown))
+            PlugFaulted(p, "shutdown");
         p->inited = false;
         p->enabled = false;
         log.Info("Disabled %s", p->name);
@@ -1671,7 +1733,15 @@ void PluginSetEnabled(int i, bool on)
 bool PluginHasSettings(int i)
 {
     PluginRec* p = At(i);
-    return p && p->enabled && p->inited && p->has_settings && p->has_settings() && p->draw_settings;
+    if (!p || !p->enabled || !p->inited || !p->has_settings || !p->draw_settings)
+        return false;
+    int has = 0;
+    if (!PlugCall(&has, p->has_settings))
+    {
+        PlugFaulted(p, "has_settings");
+        return false;
+    }
+    return has != 0;
 }
 
 void PluginDrawSettings(int i)
@@ -1682,8 +1752,10 @@ void PluginDrawSettings(int i)
     BsiUi ui{};
     FillUi(&ui);
     ImGui::PushID(p->id);
-    p->draw_settings(&ui);
+    bool ok = PlugCallVoid(p->draw_settings, &ui);
     ImGui::PopID();
+    if (!ok)
+        PlugFaulted(p, "draw_settings");
 }
 
 void PluginDrawToolsMenu(bool, bool)
@@ -1694,7 +1766,12 @@ void PluginDrawToolsMenu(bool, bool)
         PluginRec& p = g_plugins[(size_t)pi];
         if (!p.enabled || !p.inited || !p.tool_count || !p.tool_info || !p.tool_run)
             continue;
-        int n = p.tool_count();
+        int n = 0;
+        if (!PlugCall(&n, p.tool_count))
+        {
+            PlugFaulted(&p, "tool_count");
+            continue;
+        }
         if (n <= 0)
             continue;
         ImGui::PushID(pi);
@@ -1703,10 +1780,23 @@ void PluginDrawToolsMenu(bool, bool)
             for (int t = 0; t < n; t++)
             {
                 BsiToolInfo info{};
-                if (!p.tool_info(t, &info) || !info.label)
+                int got = 0;
+                if (!PlugCall(&got, p.tool_info, t, &info))
+                {
+                    PlugFaulted(&p, "tool_info");
+                    break;
+                }
+                if (!got || !info.label)
                     continue;
                 if (ImGui::MenuItem(info.label))
-                    p.tool_run(t);
+                {
+                    int rc = 0;
+                    if (!PlugCall(&rc, p.tool_run, t))
+                    {
+                        PlugFaulted(&p, "tool_run");
+                        break;
+                    }
+                }
             }
             ImGui::EndMenu();
         }
@@ -1723,11 +1813,17 @@ void PluginDrawToolsMenu(bool, bool)
 int PluginViewCount()
 {
     int n = 0;
-    for (const PluginRec& p : g_plugins)
+    for (PluginRec& p : g_plugins)
     {
         if (!p.enabled || !p.inited || !p.view_count)
             continue;
-        n += p.view_count();
+        int mine = 0;
+        if (!PlugCall(&mine, p.view_count))
+        {
+            PlugFaulted(&p, "view_count");
+            continue;
+        }
+        n += mine;
     }
     return n;
 }
@@ -1739,7 +1835,12 @@ static bool ViewAt(int want, PluginRec** rec, int* local)
     {
         if (!p.enabled || !p.inited || !p.view_count)
             continue;
-        int n = p.view_count();
+        int n = 0;
+        if (!PlugCall(&n, p.view_count))
+        {
+            PlugFaulted(&p, "view_count");
+            continue;
+        }
         if (want < cur + n)
         {
             *rec = &p;
@@ -1767,7 +1868,13 @@ const char* PluginViewLabel(int i)
     if (!ViewAt(i, &p, &local) || !p->view_info)
         return "";
     BsiViewInfo info{};
-    if (!p->view_info(local, &info) || !info.label)
+    int got = 0;
+    if (!PlugCall(&got, p->view_info, local, &info))
+    {
+        PlugFaulted(p, "view_info");
+        return "";
+    }
+    if (!got || !info.label)
         return p->name;
     snprintf(lab, sizeof(lab), "%s", info.label);
     return lab;
@@ -1782,7 +1889,13 @@ static bool ViewMetaAt(int i, BsiViewInfo* out)
     if (!ViewAt(i, &p, &local) || !p->view_info)
         return false;
     memset(out, 0, sizeof(*out));
-    return p->view_info(local, out) != 0;
+    int got = 0;
+    if (!PlugCall(&got, p->view_info, local, out))
+    {
+        PlugFaulted(p, "view_info");
+        return false;
+    }
+    return got != 0;
 }
 
 static BsiViewInfo ViewMetaLegacyDefaults()
@@ -1874,7 +1987,14 @@ void PluginDrawView(const char* sel)
     {
         BsiUi ui{};
         FillUi(&ui);
-        if (p->view_draw(local, &ui))
+        int drawn = 0;
+        if (!PlugCall(&drawn, p->view_draw, local, &ui))
+        {
+            PlugFaulted(p, "view_draw");
+            ImGui::TextUnformatted(p->err);
+            return;
+        }
+        if (drawn)
             return;
     }
     ImGui::TextWrapped("%s", I18nGet("plugin.view_stub"));

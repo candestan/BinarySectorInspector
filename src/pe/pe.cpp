@@ -51,12 +51,21 @@ static uint32_t RvaToOff(const PeFile* pe, uint32_t rva)
         return rva;
     for (int i = 0; i < pe->section_n; i++)
     {
-        uint32_t va = pe->sections[i].vaddr;
-        uint32_t span = pe->sections[i].vsize;
+        uint64_t va = pe->sections[i].vaddr;
+        uint64_t span = pe->sections[i].vsize;
         if (pe->sections[i].rawsize > span)
             span = pe->sections[i].rawsize;
-        if (rva >= va && rva < va + span)
-            return pe->sections[i].rawptr + (rva - va);
+        if (rva < va || rva >= va + span)
+            continue;
+        // only the raw part of a section exists on disk. an rva in the virtual tail
+        // has no file byte, and rawptr + delta would land in the next section.
+        uint64_t delta = (uint64_t)rva - va;
+        if (!pe->sections[i].rawptr || delta >= pe->sections[i].rawsize)
+            return 0;
+        uint64_t off = (uint64_t)pe->sections[i].rawptr + delta;
+        if (off > 0xffffffffull)
+            return 0;
+        return (uint32_t)off;
     }
     return 0;
 }
@@ -493,8 +502,13 @@ static void ParseResources(const uint8_t* b, size_t n, PeFile* pe)
 static void ReadRsrcStr(const uint8_t* b, size_t n, uint32_t root, uint32_t name_off, char* out, int cap)
 {
     out[0] = 0;
-    const IMAGE_RESOURCE_DIR_STRING_U* s = At<IMAGE_RESOURCE_DIR_STRING_U>(b, n, root + name_off);
+    size_t at = (size_t)root + name_off;
+    const IMAGE_RESOURCE_DIR_STRING_U* s = At<IMAGE_RESOURCE_DIR_STRING_U>(b, n, at);
     if (!s || !s->Length)
+        return;
+    // At() only covered the header. Length counts utf-16 units and comes from the
+    // file, so the whole string has to fit before NameString is indexed.
+    if (at + sizeof(uint16_t) + (size_t)s->Length * 2u > n)
         return;
     int nch = s->Length;
     if (nch > cap - 1)
@@ -619,10 +633,12 @@ static bool VerReadKey(const uint8_t* b, size_t n, uint32_t off, char* out, int 
     return true;
 }
 
-static void ParseVerStrings(const uint8_t* b, size_t n, uint32_t pos, uint32_t end, PeVerInfo* vi)
+static void ParseVerStrings(const uint8_t* b, size_t n, uint32_t pos, uint32_t end, PeVerInfo* vi, int depth)
 {
     // VS_VERSIONINFO / StringFileInfo tree
     // credit: https://learn.microsoft.com/en-us/windows/win32/menurc/vs-versioninfo
+    if (depth > 8)
+        return;
     while (pos + 6 <= end && vi->strings.size() < 48)
     {
         uint16_t len = *(const uint16_t*)(b + pos);
@@ -653,7 +669,7 @@ static void ParseVerStrings(const uint8_t* b, size_t n, uint32_t pos, uint32_t e
             vi->strings.push_back(s);
         }
         else
-            ParseVerStrings(b, n, val_off, node_end, vi);
+            ParseVerStrings(b, n, val_off, node_end, vi, depth + 1);
         uint32_t next = Align4(node_end);
         if (next <= pos)
             break;
@@ -706,7 +722,7 @@ static void ParseVersionLeaf(const uint8_t* b, size_t n, const PeRsrcLeaf& leaf,
         }
     }
     uint32_t kids = Align4(after + vlen);
-    ParseVerStrings(b, n, kids, node_end, &vi);
+    ParseVerStrings(b, n, kids, node_end, &vi, 0);
     if (pe->versions.size() < 8)
         pe->versions.push_back(std::move(vi));
 }
@@ -1315,7 +1331,7 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
     if (ns > 96)
         ns = 96;
     out->section_n = 0;
-    uint32_t max_raw = 0;
+    uint64_t max_raw = 0;
     for (int i = 0; i < ns; i++)
     {
         const IMAGE_SECTION_HEADER* sh = At<IMAGE_SECTION_HEADER>(data, n, sec_off + i * sizeof(IMAGE_SECTION_HEADER));
@@ -1332,13 +1348,13 @@ bool PeParse(const uint8_t* data, size_t n, PeFile* out, std::atomic<float>* pro
         s.rawsize = sh->SizeOfRawData;
         s.rawptr = sh->PointerToRawData;
         s.chars = sh->Characteristics;
-        uint32_t end = s.rawptr + s.rawsize;
+        uint64_t end = (uint64_t)s.rawptr + s.rawsize;
         if (end > max_raw)
             max_raw = end;
     }
-    if ((uint64_t)max_raw < n)
+    if (max_raw < n)
     {
-        out->overlay_off = max_raw;
+        out->overlay_off = (uint32_t)max_raw;
         out->overlay_size = n - max_raw;
     }
 
