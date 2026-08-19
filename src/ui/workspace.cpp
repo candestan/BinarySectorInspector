@@ -82,15 +82,28 @@ static bool CanPinSlot(const WsSlot& s)
     return s.desc.def_region != WsCenter;
 }
 
+static ImGuiID CentralNodeId()
+{
+    if (g_node_center)
+        return g_node_center;
+    if (!ImGui::GetCurrentContext())
+        return 0;
+    ImGuiID dock = ImGui::GetID("workspace.main");
+    ImGuiDockNode* c = ImGui::DockBuilderGetCentralNode(dock);
+    return c ? c->ID : 0;
+}
+
 static ImGuiID DefaultNodeForSlot(const WsSlot& s)
 {
     switch (s.desc.def_region)
     {
-    case WsLeft:   return g_node_left;
-    case WsRight:  return g_node_right;
-    case WsBottom: return g_node_bottom;
-    case WsTop:    return g_node_center;
-    default:       return 0;
+    case WsLeft:   return g_node_left ? g_node_left : CentralNodeId();
+    case WsRight:  return g_node_right ? g_node_right : CentralNodeId();
+    case WsBottom: return g_node_bottom ? g_node_bottom : CentralNodeId();
+    case WsTop:
+    case WsCenter:
+    default:
+        return CentralNodeId();
     }
 }
 
