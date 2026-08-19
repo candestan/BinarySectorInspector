@@ -83,6 +83,32 @@ enum
     BsiToastError = 3
 };
 
+// Semantic token kinds used by syntax highlighting.
+// Plugins pass these ids to BsiHost.theme_code_color().
+enum
+{
+    BsiTokAddress = 0,
+    BsiTokBytes,
+    BsiTokMnemonic,
+    BsiTokRegister,
+    BsiTokImmediate,
+    BsiTokMemory,
+    BsiTokSymbol,
+    BsiTokString,
+    BsiTokComment,
+    BsiTokKeyword,
+    BsiTokType,
+    BsiTokFunction,
+    BsiTokVariable,
+    BsiTokParameter,
+    BsiTokNumber,
+    BsiTokOperator,
+    BsiTokLabel,
+    BsiTokField,
+    BsiTokNamespace,
+    BsiTokUnknown
+};
+
 struct BsiPluginInfo
 {
     const char* id;          // stable reverse-dns, e.g. com.example.myplugin
@@ -105,6 +131,37 @@ struct BsiViewInfo
 {
     const char* id;
     const char* label;
+
+    // Docking metadata (optional; legacy plugins may leave these zeroed).
+    // Host interprets WsRegion / WsMenu numeric values.
+    // meta_version:
+    //   0 = legacy plugin (host uses defaults)
+    //   1 = docking metadata is present
+    uint32_t    region;       // 0..4 mapping to BSI WsRegion
+    uint32_t    default_open;
+    uint32_t    utility;     // 0/1 mapping to WsDesc.utility
+    uint32_t    menu_group;  // mapping to WsMenu: WsMenuPanel=1, WsMenuView=2
+    float       min_w;
+    float       min_h;
+    uint32_t    meta_version;
+};
+
+// Docking region numeric mapping for BsiViewInfo.region.
+enum
+{
+    BsiViewRegionLeft = 0,
+    BsiViewRegionRight,
+    BsiViewRegionTop,
+    BsiViewRegionBottom,
+    BsiViewRegionCenter
+};
+
+// Docking grouping numeric mapping for BsiViewInfo.menu_group.
+enum
+{
+    BsiViewMenuNone = 0,
+    BsiViewMenuPanel = 1,
+    BsiViewMenuView = 2
 };
 
 // Optional card art. Paths are local (relative to the DLL directory, or absolute).
@@ -249,6 +306,12 @@ struct BsiHost
     const char* (*imgui_version)(void* ctx);
     const char* (*imgui_compile_flags)(void* ctx);
     void* (*imnodes_context)(void* ctx);
+
+    // Theme/font + code rendering helpers (additive; probe with BSI_HOST_HAS).
+    void*    (*theme_font_mono)(void* ctx); // ImFont* as void*
+    uint32_t (*theme_code_color)(void* ctx, uint32_t token_kind); // ImU32
+    uint64_t (*image_epoch)(void* ctx); // changes on any byte mutation (apply/undo/redo)
+    int      (*image_dirty)(void* ctx); // PeJobDirty() -> 0/1
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.

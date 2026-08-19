@@ -313,7 +313,8 @@ void ThemeApply()
     s.FrameRounding = kRound;
     s.GrabRounding = kRound;
     s.TabRounding = kRound;
-    s.TabBarOverlineSize = ThemePx(2.f);
+    s.TabBarOverlineSize = ThemePx(1.f);
+    s.TabBorderSize = 0.f;
     s.DockingSeparatorSize = ThemePx(3.f);
     s.ScrollbarRounding = kRound;
     s.WindowBorderSize = 0.f;
@@ -350,7 +351,7 @@ void ThemeApply()
     c[ImGuiCol_FrameBgHovered]        = T(kBorder);
     c[ImGuiCol_FrameBgActive]         = T(kAccent, 0.18f);
     c[ImGuiCol_TitleBg]               = T(kBg);
-    c[ImGuiCol_TitleBgActive]         = T(kBg);
+    c[ImGuiCol_TitleBgActive]         = T(kCard);
     c[ImGuiCol_TitleBgCollapsed]      = T(kBg);
     c[ImGuiCol_MenuBarBg]             = T(kBg);
     c[ImGuiCol_ScrollbarBg]           = T(kBg);

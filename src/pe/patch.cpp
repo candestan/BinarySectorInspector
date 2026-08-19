@@ -16,6 +16,7 @@ static std::vector<PatchOp> g_hist;
 static std::vector<PatchOp> g_undo;
 static std::vector<PatchOp> g_redo;
 static uint64_t g_seq;
+static uint64_t g_state_epoch;
 static uint32_t g_diff_saved;
 
 static uint64_t NowMs()
@@ -107,6 +108,7 @@ void PatchJournalReset()
     g_undo.clear();
     g_redo.clear();
     g_seq = 0;
+    g_state_epoch = 0;
     g_diff_saved = 0;
 }
 
@@ -147,6 +149,7 @@ bool PatchApply(uint32_t off, const uint8_t* after, uint32_t n, PatchSource src)
                 if (!g_hist.empty() && g_hist.back().seq == last.seq)
                     g_hist.back() = last;
                 g_redo.clear();
+                g_state_epoch++;
                 return true;
             }
             if (last.offset == off && last.after.size() == 1)
@@ -159,6 +162,7 @@ bool PatchApply(uint32_t off, const uint8_t* after, uint32_t n, PatchSource src)
                 if (!g_hist.empty() && g_hist.back().seq == last.seq)
                     g_hist.back() = last;
                 g_redo.clear();
+                g_state_epoch++;
                 return true;
             }
         }
@@ -180,6 +184,7 @@ bool PatchApply(uint32_t off, const uint8_t* after, uint32_t n, PatchSource src)
         g_undo.erase(g_undo.begin());
     g_redo.clear();
     PushHist(op);
+    g_state_epoch++;
     return true;
 }
 
@@ -199,6 +204,7 @@ bool PatchUndo()
     AccountRange(op.offset, (uint32_t)op.before.size(), cur + op.offset, op.before.data());
     memcpy(cur + op.offset, op.before.data(), op.before.size());
     g_redo.push_back(std::move(op));
+    g_state_epoch++;
     auto log = LogFor(LogBuiltinPeAnalyzer).Module("Patch");
     log.Debug("Undo 0x%X (%zu bytes)", g_redo.back().offset, g_redo.back().before.size());
     return true;
@@ -218,6 +224,7 @@ bool PatchRedo()
     memcpy(cur + op.offset, op.after.data(), op.after.size());
     g_undo.push_back(op);
     PushHist(op);
+    g_state_epoch++;
     auto log = LogFor(LogBuiltinPeAnalyzer).Module("Patch");
     log.Debug("Redo 0x%X (%zu bytes)", op.offset, op.after.size());
     return true;
@@ -258,6 +265,7 @@ PatchByteState PatchColor(uint32_t off, uint8_t current)
 
 const std::vector<PatchOp>& PatchHistory() { return g_hist; }
 int PatchUndoDepth() { return (int)g_undo.size(); }
+uint64_t PatchStateEpoch() { return g_state_epoch; }
 
 void PatchLogPersisted()
 {

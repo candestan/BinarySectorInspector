@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 void PluginInit();
 void PluginShutdown();
 void PluginRescan();
@@ -25,5 +27,11 @@ void PluginDrawSettings(int i);
 int  PluginViewCount();
 bool PluginViewSelId(int i, char* out, int cap);
 const char* PluginViewLabel(int i);
+uint32_t    PluginViewRegion(int i);
+int         PluginViewDefaultOpen(int i);
+int         PluginViewUtility(int i);
+uint32_t    PluginViewMenuGroup(int i);
+float       PluginViewMinW(int i);
+float       PluginViewMinH(int i);
 bool PluginSelIsView(const char* sel);
 void PluginDrawView(const char* sel);

@@ -30,6 +30,7 @@ enum
     IconCheck,
     IconInfo,
     IconWarn,
+    IconPin,
 };
 
 enum

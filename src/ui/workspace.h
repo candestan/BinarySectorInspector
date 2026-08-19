@@ -11,6 +11,13 @@ enum WsRegion
     WsCenter
 };
 
+enum WsMenu
+{
+    WsMenuNone = 0,
+    WsMenuPanel,
+    WsMenuView
+};
+
 struct WsDesc
 {
     const char* id;
@@ -20,6 +27,10 @@ struct WsDesc
     WsRegion    def_region;
     bool        utility;
     bool        closable;
+    bool        default_open;
+    WsMenu      menu;
+    float       min_w;
+    float       min_h;
     void      (*draw)();
     bool      (*dirty)();
 };
@@ -30,6 +41,7 @@ void WorkspaceRegister(const WsDesc& d);
 void WorkspaceSetVisible(const char* id, bool vis);
 bool WorkspaceVisible(const char* id);
 void WorkspaceFocus(const char* id);
+void WorkspaceDockToCenter(const char* id);
 const char* WorkspaceCurrentId();
 void WorkspaceRequestRebuild();
 void WorkspaceDraw(ImVec2 size);

@@ -37,6 +37,8 @@ const Selection& SelectionGet()
 void NavOpenView(const char* view_id)
 {
     WorkspaceSetVisible(view_id, true);
+    if (view_id && strncmp(view_id, "view.", 5) == 0)
+        WorkspaceDockToCenter(view_id);
     WorkspaceFocus(view_id);
 }
 

@@ -17,8 +17,10 @@ static bool           g_dirty;
 static DWORD          g_dirty_at;
 static int            g_layout_epoch;
 
-static const int kLayoutSchema = 1;
+static const int kLayoutSchema = 2;
 static const DWORD kSaveDebounceMs = 450;
+
+static void SettingsLayoutMigrate();
 
 static void SettingsPath()
 {
@@ -48,6 +50,7 @@ bool SettingsLoad()
         g_doc = nlohmann::json::object();
         return false;
     }
+    SettingsLayoutMigrate();
     return true;
 }
 
@@ -259,6 +262,35 @@ int SettingsLayoutEpoch()
     return g_layout_epoch;
 }
 
+static void EraseVisibleKeys(nlohmann::json& L)
+{
+    std::vector<std::string> drop;
+    for (auto it = L.begin(); it != L.end(); ++it)
+    {
+        if (it.key().compare(0, 11, "ws.visible.") == 0)
+            drop.push_back(it.key());
+    }
+    for (const std::string& k : drop)
+        L.erase(k);
+}
+
+static void SettingsLayoutMigrate()
+{
+    if (!g_doc.contains("layout") || !g_doc["layout"].is_object())
+        return;
+    auto& L = g_doc["layout"];
+    int ver = 0;
+    if (L.contains("schema_version") && L["schema_version"].is_number())
+        ver = (int)L["schema_version"].get<double>();
+    if (ver >= kLayoutSchema)
+        return;
+    L.erase("imgui");
+    EraseVisibleKeys(L);
+    L["schema_version"] = kLayoutSchema;
+    g_layout_epoch++;
+    SettingsMarkDirty();
+}
+
 static nlohmann::json& LayoutRoot()
 {
     if (!g_doc.contains("layout") || !g_doc["layout"].is_object())
@@ -461,17 +493,11 @@ void SettingsLayoutResetWorkspace()
     {
         g_doc["layout"].erase("imgui");
         auto& L = g_doc["layout"];
-        std::vector<std::string> drop;
-        for (auto it = L.begin(); it != L.end(); ++it)
-        {
-            if (it.key().compare(0, 11, "ws.visible.") == 0)
-                drop.push_back(it.key());
-        }
-        for (const std::string& k : drop)
-            L.erase(k);
+        EraseVisibleKeys(L);
         L.erase("panel.tree");
         L.erase("panel.console");
         L.erase("split.dock_pair");
+        L["schema_version"] = kLayoutSchema;
     }
     g_doc.erase("view.tree_w");
     g_doc.erase("view.console_h");

@@ -51,6 +51,7 @@ void PatchLogPersisted();
 PatchByteState PatchColor(uint32_t off, uint8_t current);
 const std::vector<PatchOp>& PatchHistory();
 int  PatchUndoDepth();
+uint64_t PatchStateEpoch();
 const char* PatchSourceId(PatchSource s);
 const char* PatchSourceI18n(PatchSource s);
 void PatchFmtBytes(const std::vector<uint8_t>& b, char* out, int cap);

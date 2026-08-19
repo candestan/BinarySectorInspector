@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "app/version.h"
 #include "pe/pe.h"
+#include "pe/patch.h"
 #include "log/log.h"
 #include "persist/paths.h"
 #include "persist/settings.h"
@@ -914,6 +915,56 @@ static void RecToast(void*, int type, const char* title, const char* body)
     UiToastPush(t, title, body);
 }
 
+static void* RecThemeFontMono(void*)
+{
+    return ThemeFontMono();
+}
+
+static uint32_t RecThemeCodeColor(void*, uint32_t token_kind)
+{
+    // Keep the mapping conservative; plugins may evolve token kinds over time.
+    switch (token_kind)
+    {
+    case BsiTokKeyword: return ThemeColAccent();
+    case BsiTokType: return ThemeColInfo();
+    case BsiTokFunction: return ThemeColAccent();
+    case BsiTokVariable: return ThemeColMuted();
+    case BsiTokParameter: return ThemeColMuted();
+    case BsiTokRegister: return ThemeColFg();
+    case BsiTokImmediate:
+    case BsiTokNumber:
+        return ThemeColInfo();
+    case BsiTokAddress:
+        return ThemeColAccent();
+    case BsiTokString:
+        return ThemeColSuccess();
+    case BsiTokComment:
+        return ThemeColMuted();
+    case BsiTokOperator:
+        return ThemeColFg();
+    case BsiTokLabel:
+        return ThemeColWarning();
+    case BsiTokField:
+        return ThemeColMuted();
+    case BsiTokNamespace:
+        return ThemeColInfo();
+    case BsiTokSymbol:
+        return ThemeColAccent();
+    default:
+        return ThemeColFg();
+    }
+}
+
+static uint64_t RecImageEpoch(void*)
+{
+    return PatchStateEpoch();
+}
+
+static int RecImageDirty(void*)
+{
+    return PeJobDirty() ? 1 : 0;
+}
+
 static void* RecImguiContext(void*)
 {
     return ImGui::GetCurrentContext();
@@ -1181,6 +1232,12 @@ static void FillHost(PluginRec* p)
     p->host.imgui_version = RecImguiVersion;
     p->host.imgui_compile_flags = RecImguiCompileFlags;
     p->host.imnodes_context = RecImnodesContext;
+
+    // Additive: semantic code rendering + patch/byte invalidation helpers.
+    p->host.theme_font_mono = RecThemeFontMono;
+    p->host.theme_code_color = RecThemeCodeColor;
+    p->host.image_epoch = RecImageEpoch;
+    p->host.image_dirty = RecImageDirty;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)
@@ -1676,6 +1733,86 @@ const char* PluginViewLabel(int i)
         return p->name;
     snprintf(lab, sizeof(lab), "%s", info.label);
     return lab;
+}
+
+static bool ViewMetaAt(int i, BsiViewInfo* out)
+{
+    if (!out)
+        return false;
+    PluginRec* p = nullptr;
+    int local = 0;
+    if (!ViewAt(i, &p, &local) || !p->view_info)
+        return false;
+    memset(out, 0, sizeof(*out));
+    return p->view_info(local, out) != 0;
+}
+
+static BsiViewInfo ViewMetaLegacyDefaults()
+{
+    BsiViewInfo out{};
+    // Keep existing host behavior for legacy plugins.
+    out.region = 4;        // WsCenter
+    out.default_open = 0;
+    out.utility = 0;
+    out.menu_group = 2;   // WsMenuView
+    out.min_w = 280.f;
+    out.min_h = 0.f;
+    out.meta_version = 0;
+    return out;
+}
+
+uint32_t PluginViewRegion(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.region;
+}
+
+int PluginViewDefaultOpen(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.default_open ? 1 : 0;
+}
+
+int PluginViewUtility(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.utility ? 1 : 0;
+}
+
+uint32_t PluginViewMenuGroup(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.menu_group;
+}
+
+float PluginViewMinW(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.min_w > 0.f ? meta.min_w : 280.f;
+}
+
+float PluginViewMinH(int i)
+{
+    BsiViewInfo meta = ViewMetaLegacyDefaults();
+    BsiViewInfo out{};
+    if (ViewMetaAt(i, &out) && out.meta_version >= 1)
+        meta = out;
+    return meta.min_h;
 }
 
 bool PluginSelIsView(const char* sel)
