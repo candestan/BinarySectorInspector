@@ -1,8 +1,6 @@
 #include "ui/workspace.h"
 #include "ui/selection.h"
 #include "ui/theme.h"
-#include "ui/widgets.h"
-#include "ui/icons.h"
 #include "i18n/i18n.h"
 #include "persist/settings.h"
 #include "app/inspector.h"
@@ -23,7 +21,6 @@ struct WsSlot
     char   title_lit[80];
     bool   visible;
     bool   focus;
-    bool   pinned;
     char   win[160];
 };
 
@@ -54,17 +51,10 @@ static void MakeWin(char* out, int cap, const WsDesc& d)
 }
 
 static char VisKey[80];
-static char PinKey[80];
 static const char* ViewVisKey(const char* id)
 {
     snprintf(VisKey, sizeof(VisKey), "ws.visible.%s", id);
     return VisKey;
-}
-
-static const char* ViewPinKey(const char* id)
-{
-    snprintf(PinKey, sizeof(PinKey), "ws.pin.%s", id);
-    return PinKey;
 }
 
 static WsSlot* FindSlot(const char* id)
@@ -75,11 +65,6 @@ static WsSlot* FindSlot(const char* id)
         if (strcmp(g_slots[i].desc.id, id) == 0)
             return &g_slots[i];
     return nullptr;
-}
-
-static bool CanPinSlot(const WsSlot& s)
-{
-    return s.desc.def_region != WsCenter;
 }
 
 static ImGuiID CentralNodeId()
@@ -125,11 +110,8 @@ void WorkspaceRegister(const WsDesc& d)
         s = &g_slots[g_n++];
         memset(s, 0, sizeof(*s));
         s->visible = SettingsLayoutGetBool(ViewVisKey(d.id), d.default_open);
-        s->pinned = SettingsLayoutGetBool(ViewPinKey(d.id), false);
     }
     s->desc = d;
-    if (!CanPinSlot(*s))
-        s->pinned = false;
     snprintf(s->id, sizeof(s->id), "%s", d.id);
     s->desc.id = s->id;
     s->title_key[0] = 0;
@@ -358,52 +340,13 @@ void WorkspaceDraw(ImVec2 size)
             ImGui::SetNextWindowFocus();
             s.focus = false;
         }
-        if (s.pinned)
-        {
-            ImGuiID node = DefaultNodeForSlot(s);
-            if (node)
-                ImGui::DockBuilderDockWindow(s.win, node);
-        }
         float min_w = s.desc.min_w > 0.f ? ThemePx(s.desc.min_w) : (s.desc.utility ? ThemePx(160.f) : ThemePx(280.f));
         float min_h = s.desc.min_h > 0.f ? ThemePx(s.desc.min_h) : (s.desc.utility ? ThemePx(96.f) : ThemePx(120.f));
         ImGui::SetNextWindowSizeConstraints(ImVec2(min_w, min_h), ImVec2(FLT_MAX, FLT_MAX));
         bool open = true;
-        bool can_pin = CanPinSlot(s);
-        if (!can_pin && s.pinned)
+        bool can_close = s.desc.closable;
+        if (ImGui::Begin(s.win, can_close ? &open : nullptr))
         {
-            s.pinned = false;
-            SettingsLayoutSetBool(ViewPinKey(s.desc.id), false);
-        }
-        ImGuiWindowFlags flags = ImGuiWindowFlags_None;
-        if (s.pinned)
-            flags |= ImGuiWindowFlags_NoMove;
-        bool can_close = s.desc.closable && !s.pinned;
-        if (ImGui::Begin(s.win, can_close ? &open : nullptr, flags))
-        {
-            if (can_pin)
-            {
-                ImGui::PushID(s.desc.id);
-                float btn = ImGui::GetFrameHeight();
-                float x = ImGui::GetCursorPosX();
-                float w = ImGui::GetContentRegionAvail().x;
-                ImGui::SetCursorPosX(x + w - btn);
-                if (IconButton("pin", s.pinned ? IconCheck : IconPin, nullptr))
-                {
-                    s.pinned = !s.pinned;
-                    SettingsLayoutSetBool(ViewPinKey(s.desc.id), s.pinned);
-                    if (s.pinned)
-                    {
-                        s.visible = true;
-                        SettingsLayoutSetBool(ViewVisKey(s.desc.id), true);
-                        ImGuiID node = DefaultNodeForSlot(s);
-                        if (node)
-                            ImGui::DockBuilderDockWindow(s.win, node);
-                    }
-                }
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                    UiTooltip(s.pinned ? I18nGet("view.unpin") : I18nGet("view.pin"));
-                ImGui::PopID();
-            }
             if (s.desc.dirty && s.desc.dirty())
             {
                 ImVec2 a = ImGui::GetWindowPos();

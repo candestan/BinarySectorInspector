@@ -402,8 +402,6 @@
     "view.menu_panels": "Panels",
     "view.menu_views": "Views",
     "view.reset_workspace": "Reset Workspace Layout",
-    "view.pin": "Pin panel",
-    "view.unpin": "Unpin panel",
     "view.priority": "Priority",
     "view.console_empty": "Console is empty.",
     "lydis.disassembly": "Disassembly",

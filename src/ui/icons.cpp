@@ -86,7 +86,6 @@ static float GlyphOptical(int icon)
     case IconCheck:   return 1.04f;
     case IconInfo:    return 1.00f;
     case IconWarn:    return 1.06f;
-    case IconPin:     return 1.00f;
     case IconPlay:    return 1.04f;
     case IconTree:    return 1.04f;
     case IconGear:    return 0.92f;
@@ -320,11 +319,6 @@ void IconDraw(int icon, ImVec2 c, float s, unsigned int col, ImDrawList* dl)
         dl->AddTriangle(ImVec2(c.x, y0 + s * 0.02f), ImVec2(x0 + s * 0.06f, y1 - s * 0.08f), ImVec2(x1 - s * 0.06f, y1 - s * 0.08f), col, sw);
         dl->AddLine(ImVec2(c.x, y0 + s * 0.42f), ImVec2(c.x, c.y + s * 0.16f), col, sw);
         dl->AddCircleFilled(ImVec2(c.x, y1 - s * 0.24f), s * 0.10f, col);
-        break;
-    case IconPin:
-        dl->AddCircle(ImVec2(c.x, y0 + s * 0.36f), s * 0.22f, col, 10, sw);
-        dl->AddLine(ImVec2(c.x, y0 + s * 0.58f), ImVec2(c.x, y1 - s * 0.18f), col, sw);
-        dl->AddLine(ImVec2(c.x - s * 0.26f, y0 + s * 0.48f), ImVec2(c.x + s * 0.26f, y0 + s * 0.48f), col, sw);
         break;
     }
 }
