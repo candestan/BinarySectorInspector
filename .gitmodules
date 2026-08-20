@@ -22,3 +22,6 @@
 [submodule "third_party/imnodes"]
 	path = third_party/imnodes
 	url = https://github.com/Nelarius/imnodes.git
+[submodule "plugins/decompakey"]
+	path = plugins/decompakey
+	url = https://github.com/candestan/BSI-DecompAKEY.git

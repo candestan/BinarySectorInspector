@@ -170,6 +170,13 @@
       <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
       <Private>false</Private>
     </ProjectReference>
+    <ProjectReference Include="plugins\decompakey\DecompAKEY.vcxproj">
+      <Project>{D4E5F6A7-3333-4444-5555-666677778888}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app\app.h" />
