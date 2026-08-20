@@ -14,7 +14,7 @@ DLL yazımı, host table, ImGui pin: [`sdk/plugin/README.md`](../../sdk/plugin/R
 
 **Lydis** (`com.septillioner.bsi.lydis`) — [bsi-lydis](https://github.com/Septillioner/bsi-lydis). x86/x64 executable section listing'i, function list, xref, Tools ile entry point veya hex cursor'dan start. Decoder ayrıntısı o repository'de.
 
-**DecompSnake** (`com.candestan.binarysectorinspector.decompsnake`) — [BSI-Decompsnake](https://github.com/candestan/BSI-Decompsnake). **Tools → DecompSnake → Export .py**, host bytecode artifact'larından. Docked view yok. `x64\<Config>\decompsnake.exe` CLI projesidir, inspector plugin'i değil.
+**DecompSnake** (`com.candestan.binarysectorinspector.decompsnake`) — [BSI-DecompSnake](https://github.com/candestan/BSI-DecompSnake). Docked **DecompSnake** view, PYTHONSCRIPT decompile'ını düzenleyip Apply/Save ile açık PE'ye yazar (host Python ile compile). **Tools → DecompSnake → Export .py** duruyor. `x64\<Config>\decompsnake.exe` CLI projesidir, inspector plugin'i değil.
 
 Enable ve settings card'ları: Settings → Plugins. Key'ler plugin id'sine göre saklanır.
 

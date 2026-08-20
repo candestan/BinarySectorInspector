@@ -12,7 +12,7 @@
 	url = https://github.com/freetype/freetype.git
 [submodule "plugins/decompsnake"]
 	path = plugins/decompsnake
-	url = https://github.com/candestan/BSI-Decompsnake.git
+	url = https://github.com/candestan/BSI-DecompSnake.git
 [submodule "plugins/lydis"]
 	path = plugins/lydis
 	url = https://github.com/Septillioner/bsi-lydis

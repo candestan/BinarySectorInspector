@@ -319,6 +319,13 @@ struct BsiHost
     void (*progress_set)(void* ctx, const char* task_id, const char* title, const char* stage, float frac);
     void (*progress_clear)(void* ctx, const char* task_id);
     int  (*progress_want_cancel)(void* ctx, const char* task_id);
+
+    // Mutate the mapped PE image through the host patch journal (undoable).
+    // n must fit in the current image. Does not write disk — call job_save.
+    int  (*patch_bytes)(void* ctx, uint32_t file_off, const void* data, uint32_t n);
+    // Write the mapped image back to the open job path (backup unless skip_backup).
+    // Returns 1 on success.
+    int  (*job_save)(void* ctx, int skip_backup);
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.

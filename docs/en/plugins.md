@@ -14,7 +14,7 @@ How to write a DLL, host function table, and ImGui pin: [`sdk/plugin/README.md`]
 
 **Lydis** (`com.septillioner.bsi.lydis`) — [bsi-lydis](https://github.com/Septillioner/bsi-lydis). Zydis listing of x86/x64 executable sections, function list, xrefs, Tools to start at entry or hex cursor. Decoder internals live in that repo.
 
-**DecompSnake** (`com.candestan.binarysectorinspector.decompsnake`) — [BSI-Decompsnake](https://github.com/candestan/BSI-Decompsnake). **Tools → DecompSnake → Export .py** from host bytecode artifacts. No docked view. `decompsnake.exe` in `x64\<Config>\` is a CLI project, not the inspector plugin.
+**DecompSnake** (`com.candestan.binarysectorinspector.decompsnake`) — [BSI-DecompSnake](https://github.com/candestan/BSI-DecompSnake). Docked **DecompSnake** view edits decompiled PYTHONSCRIPT and can Apply/Save back into the open PE (compile via host Python). **Tools → DecompSnake → Export .py** remains. `decompsnake.exe` in `x64\<Config>\` is a CLI project, not the inspector plugin.
 
 Enable/disable and settings cards: Settings → Plugins. Config keys are stored per plugin id.
 

@@ -16,7 +16,7 @@ Windows PE inspector. Bir PE açıp structure, detection, resource ve byte'lara 
 
 **Workspace.** Dock edilebilir view'lar. UI İngilizce ve Türkçe. Theme'ler exe yanındaki JSON.
 
-**Plugin.** x64 DLL (`sdk/plugin`). Ağaçta [Lydis](https://github.com/Septillioner/bsi-lydis) (x86/x64 listing) ve [DecompSnake](https://github.com/candestan/BSI-Decompsnake) (Python bytecode → `.py`-benzeri text) gelir.
+**Plugin.** x64 DLL (`sdk/plugin`). Ağaçta [Lydis](https://github.com/Septillioner/bsi-lydis) (x86/x64 listing) ve [DecompSnake](https://github.com/candestan/BSI-DecompSnake) (Python bytecode → `.py`-benzeri text) gelir.
 
 ## Build ve çalıştırma
 

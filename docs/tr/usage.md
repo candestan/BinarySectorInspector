@@ -34,7 +34,7 @@ Save PE'yi yazar. Hedef zaten varsa önce sibling backup kopyalanır. Kopya fail
 
 ## Tools
 
-Host tool'ları ve plugin tool'ları (Lydis entry/hex, DecompSnake **Export .py**) **Tools** altındadır.
+Host tool'ları ve plugin tool'ları (Lydis entry/hex, DecompSnake **Export .py**) **Tools** altındadır. DecompSnake ayrıca PYTHONSCRIPT düzenlemek için docked view kaydeder.
 
 ## Settings
 

@@ -108,9 +108,11 @@ if (BSI_UI_HAS(ui, imnodes) && ui->imnodes)
 
 ## Job and image
 
-`job_ready` is true when a PE is open and idle. `image` is the mapped file bytes. `has_product` uses detection `product_key` (for example `py2exe`). `has_media` / `artifact_*` walk analysis artifacts by media string (for example `python.bytecode`). `has_rsrc_name` matches a resource leaf name.
+`job_ready` is true when a PE is open and idle. `image` is the mapped file bytes (read-only view). `has_product` uses detection `product_key` (for example `py2exe`). `has_media` / `artifact_*` walk analysis artifacts by media string (for example `python.bytecode`). `has_rsrc_name` matches a resource leaf name.
 
 Additive queries: `detection_*`, `rsrc_*`, `section_*`, `hex_goto` / `hex_select`, `open_job`.
+
+Additive mutation (probe with `BSI_HOST_HAS`): `patch_bytes(file_off, data, n)` applies through the host patch journal (undoable). `job_save(skip_backup)` writes the mapped image to the open job path. Do not cast away `const` on `image()` to poke bytes.
 
 PE layout (probe with `BSI_HOST_HAS`): `pe_machine` (`IMAGE_FILE_MACHINE_*`), `image_base`, `entry_rva`, `rva_to_off` / `off_to_rva`. `hex_cursor` returns the hex view selection (`file_off`, `size`); 0 if none.
 

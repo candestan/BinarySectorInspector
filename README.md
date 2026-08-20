@@ -16,7 +16,7 @@ Requires **Windows x64**. UI is Dear ImGui on Win32 + Direct3D 11.
 
 **Workspace.** Dockable views (navigator, overview, hex, detection, …). English and Turkish UI. Themes as JSON next to the exe.
 
-**Plugins.** Drop-in x64 DLLs (`sdk/plugin`). The tree ships [Lydis](https://github.com/Septillioner/bsi-lydis) (x86/x64 listing) and [DecompSnake](https://github.com/candestan/BSI-Decompsnake) (Python bytecode → `.py`-like text).
+**Plugins.** Drop-in x64 DLLs (`sdk/plugin`). The tree ships [Lydis](https://github.com/Septillioner/bsi-lydis) (x86/x64 listing) and [DecompSnake](https://github.com/candestan/BSI-DecompSnake) (Python bytecode → `.py`-like text).
 
 ## Build and run
 

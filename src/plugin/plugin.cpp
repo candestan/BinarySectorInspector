@@ -1041,6 +1041,25 @@ static int RecImageDirty(void*)
     return PeJobDirty() ? 1 : 0;
 }
 
+static int RecPatchBytes(void*, uint32_t file_off, const void* data, uint32_t n)
+{
+    if (!data || !n)
+        return 0;
+    size_t img_n = 0;
+    uint8_t* bytes = PeJobBytes(&img_n);
+    if (!bytes || (uint64_t)file_off + n > img_n)
+        return 0;
+    return PePatchBytes(file_off, (const uint8_t*)data, n) ? 1 : 0;
+}
+
+static int RecJobSave(void*, int skip_backup)
+{
+    const char* path = PeJobPath();
+    if (!path || !path[0])
+        return 0;
+    return PeJobSaveEx(path, skip_backup != 0) == PeSaveOk ? 1 : 0;
+}
+
 static void* RecImguiContext(void*)
 {
     return ImGui::GetCurrentContext();
@@ -1317,6 +1336,8 @@ static void FillHost(PluginRec* p)
     p->host.progress_set = RecProgressSet;
     p->host.progress_clear = RecProgressClear;
     p->host.progress_want_cancel = RecProgressWantCancel;
+    p->host.patch_bytes = RecPatchBytes;
+    p->host.job_save = RecJobSave;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

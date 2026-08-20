@@ -34,7 +34,7 @@ Save writes the PE. If the destination already exists, the app copies a sibling 
 
 ## Tools
 
-Host tools plus plugin tools (Lydis disassemble at entry/hex, DecompSnake **Export .py**) live under **Tools**.
+Host tools plus plugin tools (Lydis disassemble at entry/hex, DecompSnake **Export .py**) live under **Tools**. DecompSnake also registers a docked view for editing PYTHONSCRIPT.
 
 ## Settings
 
