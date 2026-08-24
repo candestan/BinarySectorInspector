@@ -177,6 +177,13 @@
       <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
       <Private>false</Private>
     </ProjectReference>
+    <ProjectReference Include="plugins\decompbeaker\DecompBeaker.vcxproj">
+      <Project>{E5F6A7B8-4444-5555-6666-777788889999}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\app\app.h" />

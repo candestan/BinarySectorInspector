@@ -25,3 +25,6 @@
 [submodule "plugins/decompakey"]
 	path = plugins/decompakey
 	url = https://github.com/candestan/BSI-DecompAKEY.git
+[submodule "plugins/decompbeaker"]
+	path = plugins/decompbeaker
+	url = https://github.com/candestan/BSI-DecompBeaker.git
