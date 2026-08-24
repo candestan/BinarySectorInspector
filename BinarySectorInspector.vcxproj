@@ -99,6 +99,7 @@
     <ClCompile Include="src\app\app.cpp" />
     <ClCompile Include="src\app\welcome.cpp" />
     <ClCompile Include="src\app\settings_page.cpp" />
+    <ClCompile Include="src\app\about_contributors.cpp" />
     <ClCompile Include="src\app\version.cpp" />
     <ClCompile Include="src\app\inspector.cpp" />
     <ClCompile Include="src\app\inspector_analysis.cpp" />

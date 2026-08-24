@@ -1,6 +1,7 @@
 #include "app/settings_page.h"
 #include "app/app.h"
 #include "app/inspector.h"
+#include "app/about_contributors.h"
 #include "ui/theme.h"
 #include "ui/theme_pack.h"
 #include "ui/icons.h"
@@ -1461,6 +1462,8 @@ static void DrawAbout()
     ImGui::Separator();
     ImGui::Spacing();
     DrawLysepBrand();
+
+    AboutContributorsDraw();
 
     ImGui::Spacing();
     ImGui::TextUnformatted(I18nGet("about.license"));
