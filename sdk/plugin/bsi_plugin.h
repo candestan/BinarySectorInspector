@@ -326,6 +326,11 @@ struct BsiHost
     // Write the mapped image back to the open job path (backup unless skip_backup).
     // Returns 1 on success.
     int  (*job_save)(void* ctx, int skip_backup);
+
+    // Owned / derived artifact bytes (additive). Prefer over image+file_off when
+    // the artifact was reconstructed (e.g. zlib inflate). Pointer valid until
+    // next analysis / job close. Returns null when not owned — fall back to image.
+    const uint8_t* (*artifact_bytes)(void* ctx, const char* media, int index, size_t* n);
 };
 
 // Original v2 block is present (through json_dump). Prefer this in Init.

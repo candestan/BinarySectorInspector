@@ -1,7 +1,7 @@
 #include "ui/selection.h"
 #include "ui/workspace.h"
-#include "app/inspector.h"
 #include "ui/hex_view.h"
+#include "app/inspector.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -49,6 +49,7 @@ void NavFocusView(const char* view_id)
 
 void NavOpenInHex(uint32_t file_off)
 {
+    HexViewUseJobImage();
     InspectorSelect("hex");
     HexViewGoto(file_off);
 }

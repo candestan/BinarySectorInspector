@@ -245,6 +245,22 @@ static uint32_t ArtifactFileOff(const PeFile* pe, const AnalysisArtifact* art)
     return 0;
 }
 
+static void OpenArtifactHex(const PeFile* pe, const AnalysisArtifact* art)
+{
+    if (!art)
+        return;
+    if (!art->owned.empty())
+    {
+        HexViewOpen(art->owned.data(), art->owned.size());
+        InspectorSelect("hex");
+        HexViewGoto(0);
+        return;
+    }
+    uint32_t off = ArtifactFileOff(pe, art);
+    if (off)
+        GoHex(off);
+}
+
 static void ArtifactContextMenu(const PeFile* pe, const AnalysisArtifact* art)
 {
     if (!pe || !art || !UiBeginPopupContextItem("anctx"))
@@ -261,8 +277,9 @@ static void ArtifactContextMenu(const PeFile* pe, const AnalysisArtifact* art)
             CopyClip(buf);
         }
     }
-    if (off && ImGui::MenuItem(I18nGet("pe.analysis_hex")))
-        GoHex(off);
+    const bool can_hex = !art->owned.empty() || off != 0;
+    if (can_hex && ImGui::MenuItem(I18nGet("pe.analysis_hex")))
+        OpenArtifactHex(pe, art);
     if (!art->exports.empty())
         ImGui::Separator();
     for (int i = 0; i < (int)art->exports.size(); i++)
@@ -458,15 +475,13 @@ static void DrawArtifactBody(const PeFile* pe, const AnalysisArtifact* art)
     if (art->size)
         FieldU(I18nGet("pe.col.size"), art->size, false, I18nGet("help.fld.rsrcsize"));
     DrawArtifactExports(pe, art);
-    uint32_t hex_off = ArtifactFileOff(pe, art);
-    if (hex_off)
+    const bool can_hex = !art->owned.empty() || ArtifactFileOff(pe, art) != 0;
+    if (can_hex)
     {
         ImGui::SameLine();
         ImGui::PushID(art);
-        ImGui::PushID((int)hex_off);
         if (UiButton(I18nGet("pe.analysis_hex")))
-            GoHex(hex_off);
-        ImGui::PopID();
+            OpenArtifactHex(pe, art);
         ImGui::PopID();
     }
     for (int t = 0; t < (int)art->tables.size(); t++)
@@ -531,7 +546,10 @@ void DrawArtifactBundle(PeFile* pe, const AnalysisArtifact* root, bool picker)
                 char row[208];
                 snprintf(row, sizeof(row), "%s##an%d", lab, i);
                 if (ImGui::Selectable(row, sel))
+                {
                     g_an_child = i;
+                    g_an_grand = -1;
+                }
                 if (sel)
                     ImGui::SetItemDefaultFocus();
                 ImGui::PopID();
@@ -550,23 +568,27 @@ static const AnalysisArtifact* SelectedArtifact(const PeFile* pe)
     const AnalysisArtifact& root = pe->analysis[g_an_root];
     if (g_an_child < 0)
         return &root;
-    if (g_an_child < (int)root.children.size())
-        return &root.children[g_an_child];
-    return &root;
+    if (g_an_child >= (int)root.children.size())
+        return &root;
+    const AnalysisArtifact& ch = root.children[g_an_child];
+    if (g_an_grand >= 0 && g_an_grand < (int)ch.children.size())
+        return &ch.children[g_an_grand];
+    return &ch;
 }
 
-static bool AnalysisSelectable(const PeFile* pe, const AnalysisArtifact* art, int root_i, int child_i)
+static bool AnalysisSelectable(const PeFile* pe, const AnalysisArtifact* art, int root_i, int child_i, int grand_i)
 {
     char lab[192];
     ArtifactVisLabel(*art, lab, (int)sizeof(lab));
     char row[224];
-    snprintf(row, sizeof(row), "%s##an_%d_%d", lab, root_i, child_i);
-    bool sel = (g_an_root == root_i && g_an_child == child_i);
+    snprintf(row, sizeof(row), "%s##an_%d_%d_%d", lab, root_i, child_i, grand_i);
+    bool sel = (g_an_root == root_i && g_an_child == child_i && g_an_grand == grand_i);
     bool hit = ImGui::Selectable(row, sel);
     if (hit)
     {
         g_an_root = root_i;
         g_an_child = child_i;
+        g_an_grand = grand_i;
         uint32_t off = ArtifactFileOff(pe, art);
         SelectionSet("artifact", art->id[0] ? art->id : lab, lab, art->label, off, 0);
     }
@@ -592,7 +614,8 @@ void DrawAnalysis(PeFile* pe)
     if (g_an_root < 0 || g_an_root >= (int)pe->analysis.size())
         g_an_root = 0;
 
-    const int kMaxTreeChildren = 32;
+    const int kMaxTreeChildren = 256;
+    const int kMaxTreeGrand = 64;
     ImGui::BeginChild("an_list", ImVec2(SplitListW(&g_split_an), 0.f), ImGuiChildFlags_Borders);
 
     std::vector<std::string> groups;
@@ -626,15 +649,36 @@ void DrawAnalysis(PeFile* pe)
                 if (groups[gi] != g)
                     continue;
                 ImGui::PushID(r);
-                AnalysisSelectable(pe, &root, r, -1);
+                AnalysisSelectable(pe, &root, r, -1, -1);
                 int shown = (int)root.children.size();
                 if (shown > kMaxTreeChildren)
                     shown = kMaxTreeChildren;
                 for (int c = 0; c < shown; c++)
                 {
+                    const AnalysisArtifact& ch = root.children[c];
                     ImGui::PushID(c);
                     ImGui::Indent(ThemeSpaceMd());
-                    AnalysisSelectable(pe, &root.children[c], r, c);
+                    AnalysisSelectable(pe, &ch, r, c, -1);
+                    int gshown = (int)ch.children.size();
+                    if (gshown > kMaxTreeGrand)
+                        gshown = kMaxTreeGrand;
+                    for (int gci = 0; gci < gshown; gci++)
+                    {
+                        ImGui::PushID(gci);
+                        ImGui::Indent(ThemeSpaceMd());
+                        AnalysisSelectable(pe, &ch.children[gci], r, c, gci);
+                        ImGui::Unindent(ThemeSpaceMd());
+                        ImGui::PopID();
+                    }
+                    if ((int)ch.children.size() > kMaxTreeGrand)
+                    {
+                        ImGui::Indent(ThemeSpaceMd());
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ThemeColMuted()));
+                        ImGui::Text("%s (%zu)", I18nGet("pe.analysis_more"),
+                            ch.children.size() - (size_t)kMaxTreeGrand);
+                        ImGui::PopStyleColor();
+                        ImGui::Unindent(ThemeSpaceMd());
+                    }
                     ImGui::Unindent(ThemeSpaceMd());
                     ImGui::PopID();
                 }

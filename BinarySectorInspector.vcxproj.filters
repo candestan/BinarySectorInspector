@@ -132,6 +132,12 @@
     <ClCompile Include="src\analyze\labview_analyzer.cpp">
       <Filter>analyze</Filter>
     </ClCompile>
+    <ClCompile Include="src\analyze\pyinstaller_analyzer.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz.c">
+      <Filter>third_party</Filter>
+    </ClCompile>
     <ClCompile Include="src\tool\tool.cpp">
       <Filter>tool</Filter>
     </ClCompile>

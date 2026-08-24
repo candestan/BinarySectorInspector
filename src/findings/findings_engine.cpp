@@ -8,6 +8,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <algorithm>
+#include <vector>
 
 #ifndef IMAGE_DLLCHARACTERISTICS_GUARD_CF
 #define IMAGE_DLLCHARACTERISTICS_GUARD_CF 0x4000
@@ -743,6 +744,12 @@ void FindingsEngineRun(PeFile* pe)
     const AnalysisProfile* prof = AnalyzeProfileActive();
     if (!prof)
         return;
+    std::vector<PeFinding> identity;
+    for (const PeFinding& f : pe->findings)
+    {
+        if (f.kind == PeFindIdentity)
+            identity.push_back(f);
+    }
     pe->report = AnalysisReport{};
     pe->findings.clear();
     FindingsCtx ctx{ pe, &pe->report, prof, 0 };
@@ -761,6 +768,9 @@ void FindingsEngineRun(PeFile* pe)
     Correlate(&ctx);
     if (prof->stage_enabled[StageSummary])
         BuildSummary(&ctx);
+
+    for (const PeFinding& f : identity)
+        pe->findings.push_back(f);
 
     std::sort(pe->report.findings.begin(), pe->report.findings.end(),
         [](const FindingItem& a, const FindingItem& b) {

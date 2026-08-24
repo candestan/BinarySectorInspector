@@ -41,6 +41,8 @@ static size_t g_goto = (size_t)-1;
 static size_t g_anchor = (size_t)-1;
 static size_t g_sel_end = (size_t)-1;
 static bool g_drag;
+static std::vector<uint8_t> g_alt;
+static bool g_use_alt;
 
 static char g_query[512];
 static int g_mode = HexModeAob;
@@ -420,9 +422,27 @@ void HexViewReset()
     g_ed.DataEditingAddr = g_ed.DataPreviewAddr = (size_t)-1;
 }
 
-void HexViewOpen(const uint8_t*, size_t)
+void HexViewOpen(const uint8_t* data, size_t n)
 {
     HexViewReset();
+    size_t pn = 0;
+    const uint8_t* pe = PeJobBytes(&pn);
+    if (data && n && (!(pe && data == pe && n == pn)))
+    {
+        g_alt.assign(data, data + n);
+        g_use_alt = true;
+    }
+    else
+    {
+        g_alt.clear();
+        g_use_alt = false;
+    }
+}
+
+void HexViewUseJobImage()
+{
+    g_alt.clear();
+    g_use_alt = false;
 }
 
 void HexViewOnSaved()
@@ -482,7 +502,14 @@ bool HexViewCursor(size_t* off, size_t* size)
 void HexViewDraw()
 {
     size_t n = 0;
-    uint8_t* b = PeJobBytes(&n);
+    uint8_t* b = nullptr;
+    if (g_use_alt)
+    {
+        b = g_alt.empty() ? nullptr : g_alt.data();
+        n = g_alt.size();
+    }
+    else
+        b = PeJobBytes(&n);
     if (!b || !n)
     {
         ImGui::TextUnformatted(I18nGet("pe.none"));
@@ -496,7 +523,6 @@ void HexViewDraw()
     }
     if (!g_primed)
     {
-        g_ed.ReadOnly = false;
         g_ed.OptShowDataPreview = SettingsLayoutGetBool("hex.preview", true);
         g_ed.Cols = SettingsLayoutGetInt("hex.cols", 16);
         if (g_ed.Cols < 4)
@@ -507,10 +533,11 @@ void HexViewDraw()
         g_ed.OptShowHexII = SettingsLayoutGetBool("hex.hexii", false);
         g_ed.OptGreyOutZeroes = SettingsLayoutGetBool("hex.grey_zeroes", true);
         g_ed.OptUpperCaseHex = SettingsLayoutGetBool("hex.uppercase", true);
-        g_ed.WriteFn = OnWrite;
         g_ed.BgColorFn = OnBg;
         g_primed = true;
     }
+    g_ed.ReadOnly = g_use_alt;
+    g_ed.WriteFn = g_use_alt ? nullptr : OnWrite;
     ImVec4 hl = ImGui::ColorConvertU32ToFloat4(ThemeColAccent());
     hl.w = 0.38f;
     g_ed.HighlightColor = ImGui::ColorConvertFloat4ToU32(hl);

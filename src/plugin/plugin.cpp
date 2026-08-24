@@ -4,6 +4,7 @@
 #include "app/version.h"
 #include "pe/pe.h"
 #include "pe/patch.h"
+#include "analyze/analyze.h"
 #include "log/log.h"
 #include "persist/paths.h"
 #include "persist/settings.h"
@@ -236,13 +237,31 @@ static int RecArtAt(void*, const char* media, int index,
         return 0;
     const AnalysisArtifact* a = hits[(size_t)index];
     if (file_off) *file_off = a->file_off;
-    if (size) *size = a->size;
+    if (size) *size = a->owned.empty() ? a->size : (uint32_t)a->owned.size();
     if (extra) *extra = a->extra;
     if (extra2) *extra2 = a->extra2;
     if (label && label_cap > 0)
         snprintf(label, label_cap, "%s", a->label);
     if (is_main) *is_main = a->flag_main ? 1 : 0;
     return 1;
+}
+
+static const uint8_t* RecArtBytes(void*, const char* media, int index, size_t* n)
+{
+    if (n)
+        *n = 0;
+    const PeFile* pe = PeJobResult();
+    if (!pe)
+        return nullptr;
+    std::vector<const AnalysisArtifact*> hits;
+    for (const AnalysisArtifact& a : pe->analysis)
+        WalkMedia(a, media, &hits);
+    if (index < 0 || index >= (int)hits.size())
+        return nullptr;
+    const AnalysisArtifact* a = hits[(size_t)index];
+    size_t img_n = 0;
+    const uint8_t* img = PeJobBytes(&img_n);
+    return AnalyzeArtifactBytes(a, img, img_n, n);
 }
 
 static void FilterFromExt(const char* ext, wchar_t* out, int cap)
@@ -1338,6 +1357,7 @@ static void FillHost(PluginRec* p)
     p->host.progress_want_cancel = RecProgressWantCancel;
     p->host.patch_bytes = RecPatchBytes;
     p->host.job_save = RecJobSave;
+    p->host.artifact_bytes = RecArtBytes;
 }
 
 static void ReleaseSrv(ID3D11ShaderResourceView** srv)

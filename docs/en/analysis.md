@@ -33,6 +33,7 @@ Reload: Settings → Detection → reload signatures (see UI copy there).
 Static C++ providers in `src/analyze/` (not plugins):
 
 - **py2exe** — reconstruct marshal from `PYTHONSCRIPT`
+- **PyInstaller** — CArchive/TOC/PYZ inventory (owned buffers; DecompSnake via `python.bytecode`)
 - **Go** — buildinfo and pclntab (function tables for 1.16+; older tables detected only)
 - **AutoIt** — SCRIPT / overlay inventory
 - **AutoHotkey** — Ahk2Exe overlay/RCDATA inventory and plaintext fragments

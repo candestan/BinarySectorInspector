@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "packer.pyinstaller.generic",
+  "name": "PyInstaller",
+  "category": "packer",
+  "vendor": "PyInstaller",
+  "product_key": "pyinstaller",
+  "confidence": "high",
+  "author": "candestan",
+  "reference": "https://pyinstaller.org/",
+  "description": "PyInstaller CArchive cookie (MEI) and common runtime strings.",
+  "conditions": {
+    "any": [
+      {
+        "byte_pattern": "4D 45 49 0C 0B 0A 0B 0E",
+        "where": "file"
+      },
+      { "string_contains": "_MEIPASS" },
+      { "string_contains": "pyi_rth_" },
+      { "string_contains": "PyInstaller" }
+    ]
+  }
+}

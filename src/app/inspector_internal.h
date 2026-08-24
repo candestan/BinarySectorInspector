@@ -11,6 +11,7 @@
 // Panel selection that has to survive across views and be reset when a new file loads.
 extern int g_an_root;
 extern int g_an_child;
+extern int g_an_grand; // -1 = no grandchild selected
 extern int g_find_sel;
 extern float g_split_an;
 extern float g_split_find;

@@ -46,6 +46,7 @@ static int g_rsrc_kind; // 0 all, 1 version, 2 icons, 3 com
 static int g_rsrc_row;
 int g_an_root;
 int g_an_child = -1; // -1 = selected root artifact
+int g_an_grand = -1; // -1 = no grandchild under children[g_an_child]
 int g_find_sel = -1;
 static int g_reloc_sel;
 static int g_sec_sel;
@@ -2310,6 +2311,7 @@ static void FillTree()
         g_rsrc_kind = 0;
         g_an_root = 0;
         g_an_child = -1;
+        g_an_grand = -1;
         size_t bn = 0;
         const uint8_t* bb = PeJobBytes(&bn);
         HexViewOpen(bb, bn);

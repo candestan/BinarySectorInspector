@@ -1,17 +1,28 @@
 #include "analyze/analyze.h"
+#include "analyze/profile.h"
 #include "pe/pe.h"
 #include "log/log.h"
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <stdio.h>
 #include <string.h>
 #include <vector>
+#include <ctype.h>
+
+#pragma comment(lib, "bcrypt.lib")
+
+#define MINIZ_NO_ARCHIVE_APIS
+#define MINIZ_NO_STDIO
+#include "miniz.h"
 
 static std::vector<const AnalyzerProvider*>& Providers()
 {
     static std::vector<const AnalyzerProvider*> v;
     return v;
 }
+
+static uint64_t g_decompress_used;
 
 void AnalyzeRegister(const AnalyzerProvider* provider)
 {
@@ -159,6 +170,225 @@ void AnalyzeAddProviderExport(AnalysisArtifact* art, const char* id, const char*
     art->exports.push_back(ex);
 }
 
+void AnalyzeAddOwnedExport(AnalysisArtifact* art, const char* id, const char* i18n_key,
+    const char* suggest)
+{
+    if (!art || art->owned.empty())
+        return;
+    AnalysisExport ex{};
+    snprintf(ex.id, sizeof(ex.id), "%s", id ? id : "owned");
+    snprintf(ex.i18n_key, sizeof(ex.i18n_key), "%s", i18n_key ? i18n_key : "pe.analysis_dump_raw");
+    snprintf(ex.suggest, sizeof(ex.suggest), "%s", suggest ? suggest : "dump.bin");
+    ex.kind = AnalysisExportRaw;
+    ex.file_off = 0;
+    ex.size = (uint32_t)art->owned.size();
+    ex.extra = 1; // owned buffer
+    art->exports.push_back(ex);
+}
+
+static uint32_t CountArtTree(const AnalysisArtifact& a)
+{
+    uint32_t n = 1;
+    for (const AnalysisArtifact& ch : a.children)
+        n += CountArtTree(ch);
+    return n;
+}
+
+uint32_t AnalyzeCountArtifacts(const PeFile* pe)
+{
+    if (!pe)
+        return 0;
+    uint32_t n = 0;
+    for (const AnalysisArtifact& a : pe->analysis)
+        n += CountArtTree(a);
+    return n;
+}
+
+bool AnalyzeBudgetCanAdd(const PeFile* pe, uint32_t add)
+{
+    const AnalysisProfile* prof = AnalyzeProfileActive();
+    if (!prof || !pe)
+        return false;
+    uint64_t have = AnalyzeCountArtifacts(pe);
+    return have + add <= (uint64_t)prof->budgets.max_artifacts;
+}
+
+bool AnalyzeBudgetCanDecompress(uint64_t compressed_n, uint64_t uncompressed_n, uint64_t* total_out)
+{
+    const AnalysisProfile* prof = AnalyzeProfileActive();
+    if (!prof)
+        return false;
+    if (uncompressed_n == 0 || uncompressed_n > prof->budgets.max_artifact_bytes)
+        return false;
+    if (compressed_n && uncompressed_n > compressed_n * (uint64_t)prof->budgets.max_inflate_ratio)
+        return false;
+    if (g_decompress_used > UINT64_MAX - uncompressed_n)
+        return false;
+    uint64_t next = g_decompress_used + uncompressed_n;
+    if (next > prof->budgets.max_decompress_bytes)
+        return false;
+    if (total_out)
+        *total_out = next;
+    return true;
+}
+
+bool AnalyzeZlibInflate(const uint8_t* src, size_t src_n, size_t expect_n, std::vector<uint8_t>* out)
+{
+    if (!src || !src_n || !out || !expect_n)
+        return false;
+    if (!AnalyzeBudgetCanDecompress(src_n, expect_n, nullptr))
+        return false;
+    out->resize(expect_n);
+    mz_ulong dest_len = (mz_ulong)expect_n;
+    int rc = mz_uncompress(out->data(), &dest_len, src, (mz_ulong)src_n);
+    if (rc != MZ_OK)
+    {
+        out->clear();
+        return false;
+    }
+    out->resize((size_t)dest_len);
+    g_decompress_used += (uint64_t)dest_len;
+    return true;
+}
+
+bool AnalyzeZlibInflateAuto(const uint8_t* src, size_t src_n, std::vector<uint8_t>* out)
+{
+    if (!src || !src_n || !out)
+        return false;
+    size_t out_len = 0;
+    void* p = tinfl_decompress_mem_to_heap(src, src_n, &out_len, TINFL_FLAG_PARSE_ZLIB_HEADER);
+    if (!p || !out_len)
+    {
+        if (p)
+            mz_free(p);
+        return false;
+    }
+    if (!AnalyzeBudgetCanDecompress(src_n, out_len, nullptr))
+    {
+        mz_free(p);
+        return false;
+    }
+    out->assign((const uint8_t*)p, (const uint8_t*)p + out_len);
+    mz_free(p);
+    g_decompress_used += (uint64_t)out_len;
+    return true;
+}
+
+void AnalyzeStampSha256(AnalysisArtifact* art)
+{
+    if (!art)
+        return;
+    art->sha256_hex[0] = 0;
+    const uint8_t* p = nullptr;
+    size_t n = 0;
+    if (!art->owned.empty())
+    {
+        p = art->owned.data();
+        n = art->owned.size();
+    }
+    if (!p || !n)
+        return;
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    DWORD hash_len = 0, cb = 0;
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0)
+        return;
+    if (BCryptGetProperty(alg, BCRYPT_HASH_LENGTH, (PUCHAR)&hash_len, sizeof(hash_len), &cb, 0) != 0 ||
+        hash_len != 32)
+    {
+        BCryptCloseAlgorithmProvider(alg, 0);
+        return;
+    }
+    std::vector<uint8_t> dig(hash_len);
+    if (BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0) != 0)
+    {
+        BCryptCloseAlgorithmProvider(alg, 0);
+        return;
+    }
+    BCryptHashData(hash, (PUCHAR)p, (ULONG)n, 0);
+    BCryptFinishHash(hash, dig.data(), hash_len, 0);
+    BCryptDestroyHash(hash);
+    BCryptCloseAlgorithmProvider(alg, 0);
+    for (DWORD i = 0; i < hash_len; i++)
+        snprintf(art->sha256_hex + i * 2, 3, "%02x", dig[i]);
+    art->sha256_hex[64] = 0;
+}
+
+void AnalyzeSetLogicalPath(AnalysisArtifact* art, const char* path)
+{
+    if (!art)
+        return;
+    snprintf(art->logical_path, sizeof(art->logical_path), "%s", path ? path : "");
+}
+
+bool AnalyzeSanitizeExportName(const char* in, char* out, int out_cap)
+{
+    if (!out || out_cap < 2)
+        return false;
+    out[0] = 0;
+    if (!in || !in[0])
+        return false;
+    // Reject absolute / traversal / reserved devices.
+    if (strstr(in, "..") || strchr(in, ':') || in[0] == '/' || in[0] == '\\')
+        return false;
+    char tmp[260];
+    int j = 0;
+    for (int i = 0; in[i] && j < (int)sizeof(tmp) - 1; i++)
+    {
+        unsigned char c = (unsigned char)in[i];
+        if (c < 32 || c == '<' || c == '>' || c == '"' || c == '|' || c == '?' || c == '*')
+            tmp[j++] = '_';
+        else if (c == '/' || c == '\\')
+            tmp[j++] = '_';
+        else
+            tmp[j++] = (char)c;
+    }
+    tmp[j] = 0;
+    if (!tmp[0])
+        return false;
+    // Strip trailing dots/spaces (Win reserved).
+    while (j > 0 && (tmp[j - 1] == '.' || tmp[j - 1] == ' '))
+        tmp[--j] = 0;
+    if (!tmp[0])
+        return false;
+    const char* base = tmp;
+    static const char* kBad[] = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        nullptr
+    };
+    for (int i = 0; kBad[i]; i++)
+    {
+        if (_stricmp(base, kBad[i]) == 0)
+            return false;
+    }
+    snprintf(out, out_cap, "%s", tmp);
+    return out[0] != 0;
+}
+
+const uint8_t* AnalyzeArtifactBytes(const AnalysisArtifact* art, const uint8_t* image, size_t image_n,
+    size_t* out_n)
+{
+    if (out_n)
+        *out_n = 0;
+    if (!art)
+        return nullptr;
+    if (!art->owned.empty())
+    {
+        if (out_n)
+            *out_n = art->owned.size();
+        return art->owned.data();
+    }
+    if (!image || !art->size)
+        return nullptr;
+    if ((uint64_t)art->file_off + art->size > image_n)
+        return nullptr;
+    if (out_n)
+        *out_n = art->size;
+    return image + art->file_off;
+}
+
 static bool HasResourceType(const PeFile* pe, const char* type)
 {
     if (!pe || !type || !type[0])
@@ -290,6 +520,7 @@ static bool DumpTablesText(const AnalysisArtifact* art, const char* path)
 void AnalyzeRun(PeFile* pe, const uint8_t* data, size_t n)
 {
     AnalyzeInit();
+    g_decompress_used = 0;
     if (!pe)
         return;
     pe->analysis.clear();
@@ -313,6 +544,14 @@ bool AnalyzeExport(const PeFile* pe, const uint8_t* data, size_t n,
         return false;
     if (ex->kind == AnalysisExportRaw)
     {
+        if (ex->extra == 1 || (!art->owned.empty() && ex->file_off == 0 &&
+            ex->size && ex->size <= art->owned.size()))
+        {
+            size_t take = ex->size ? ex->size : art->owned.size();
+            if (take > art->owned.size())
+                return false;
+            return WriteBytes(path, art->owned.data(), (DWORD)take);
+        }
         if (!data || !ex->size || (uint64_t)ex->file_off + ex->size > n)
             return false;
         return WriteBytes(path, data + ex->file_off, ex->size);

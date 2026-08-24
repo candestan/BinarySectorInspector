@@ -22,12 +22,15 @@
     "correlation": true
   },
   "budgets": {
-    "max_artifacts": 64,
+    "max_artifacts": 2048,
     "max_findings": 120,
     "max_evidence": 256,
     "max_correlation_passes": 2,
     "max_analyzer_passes": 1,
     "max_nested_depth": 2,
-    "max_scan_bytes": 67108864
+    "max_scan_bytes": 67108864,
+    "max_decompress_bytes": 268435456,
+    "max_artifact_bytes": 33554432,
+    "max_inflate_ratio": 100
   }
 }

@@ -23,7 +23,11 @@ static void SetDefaults(AnalysisProfile* p)
         true, true, true, true, true, true, true, true, true
     };
     p->budgets = AnalysisBudgets{
-        64, 120, 256, 2, 1, 2, 64ull * 1024 * 1024
+        2048, 120, 256, 2, 1, 2,
+        64ull * 1024 * 1024,
+        256ull * 1024 * 1024,
+        32ull * 1024 * 1024,
+        100
     };
 }
 
@@ -98,6 +102,9 @@ static bool ParseProfileJson(const nlohmann::json& j, AnalysisProfile* p, char* 
         p->budgets.max_analyzer_passes = b.value("max_analyzer_passes", (int)p->budgets.max_analyzer_passes);
         p->budgets.max_nested_depth = b.value("max_nested_depth", (int)p->budgets.max_nested_depth);
         p->budgets.max_scan_bytes = b.value("max_scan_bytes", (uint64_t)p->budgets.max_scan_bytes);
+        p->budgets.max_decompress_bytes = b.value("max_decompress_bytes", (uint64_t)p->budgets.max_decompress_bytes);
+        p->budgets.max_artifact_bytes = b.value("max_artifact_bytes", (uint64_t)p->budgets.max_artifact_bytes);
+        p->budgets.max_inflate_ratio = b.value("max_inflate_ratio", (int)p->budgets.max_inflate_ratio);
     }
     return true;
 }

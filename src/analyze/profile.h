@@ -21,6 +21,9 @@ struct AnalysisBudgets
     uint32_t max_analyzer_passes;
     uint32_t max_nested_depth;
     uint64_t max_scan_bytes;
+    uint64_t max_decompress_bytes;
+    uint64_t max_artifact_bytes;
+    uint32_t max_inflate_ratio;
 };
 
 struct AnalysisCapabilities

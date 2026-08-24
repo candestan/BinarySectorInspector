@@ -323,6 +323,7 @@ static uint32_t PycMagicFor(int maj, int min)
         case 11: return 0x0A0D0DA7u;
         case 12: return 0x0A0D0DCBu;
         case 13: return 0x0A0D0DF3u;
+        case 14: return 0x0A0D0E2Bu;
         default: break;
         }
     }
