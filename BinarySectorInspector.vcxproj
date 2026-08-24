@@ -46,7 +46,7 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;IMGUI_USER_CONFIG="bsi_imconfig.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party;$(ProjectDir)third_party\miniz;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <ResourceCompile>
@@ -72,7 +72,7 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;IMGUI_USER_CONFIG="bsi_imconfig.h";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)sdk\imgui;$(ProjectDir)third_party;$(ProjectDir)third_party\miniz;$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;$(ProjectDir)third_party\imgui\misc\freetype;$(ProjectDir)third_party\freetype\include;$(ProjectDir)third_party\imgui_club\imgui_memory_editor;$(ProjectDir)third_party\nlohmann_json\single_include;$(ProjectDir)third_party\kuara_dynamic\include;$(ProjectDir)third_party\kuara_dynamic\src;$(ProjectDir)third_party\imnodes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MaxSpeed</Optimization>
     </ClCompile>
@@ -133,8 +133,26 @@
     <ClCompile Include="src\analyze\ahk_analyzer.cpp" />
     <ClCompile Include="src\analyze\labview_analyzer.cpp" />
     <ClCompile Include="src\analyze\pyinstaller_analyzer.cpp" />
-    <ClCompile Include="third_party\miniz.c">
+    <ClCompile Include="third_party\miniz\miniz.c">
       <ObjectFileName>$(IntDir)miniz.obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>MINIZ_NO_ARCHIVE_APIS;MINIZ_NO_STDIO;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_tdef.c">
+      <ObjectFileName>$(IntDir)miniz_tdef.obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>MINIZ_NO_ARCHIVE_APIS;MINIZ_NO_STDIO;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_tinfl.c">
+      <ObjectFileName>$(IntDir)miniz_tinfl.obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>MINIZ_NO_ARCHIVE_APIS;MINIZ_NO_STDIO;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_zip.c">
+      <ObjectFileName>$(IntDir)miniz_zip.obj</ObjectFileName>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>MINIZ_NO_ARCHIVE_APIS;MINIZ_NO_STDIO;%(PreprocessorDefinitions)</PreprocessorDefinitions>

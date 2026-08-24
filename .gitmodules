@@ -28,3 +28,6 @@
 [submodule "plugins/decompbeaker"]
 	path = plugins/decompbeaker
 	url = https://github.com/candestan/BSI-DecompBeaker.git
+[submodule "third_party/miniz"]
+	path = third_party/miniz
+	url = https://github.com/richgel999/miniz.git

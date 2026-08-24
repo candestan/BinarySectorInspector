@@ -135,7 +135,16 @@
     <ClCompile Include="src\analyze\pyinstaller_analyzer.cpp">
       <Filter>analyze</Filter>
     </ClCompile>
-    <ClCompile Include="third_party\miniz.c">
+    <ClCompile Include="third_party\miniz\miniz.c">
+      <Filter>third_party</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_tdef.c">
+      <Filter>third_party</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_tinfl.c">
+      <Filter>third_party</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\miniz\miniz_zip.c">
       <Filter>third_party</Filter>
     </ClCompile>
     <ClCompile Include="src\tool\tool.cpp">

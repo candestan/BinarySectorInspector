@@ -38,6 +38,7 @@ Do not bump submodule commits casually. Upgrades are deliberate.
 | nlohmann/json | `cdf52ae9bef77a0844e02e42df6d2df83a55c4b9` (`v3.11.3-474-gcdf52ae9b`) | Git submodule `third_party/nlohmann_json`. Include `single_include`. | MIT (`third_party/nlohmann_json/LICENSE.MIT`) | settings, i18n, theme JSON |
 | FreeType | `42608f77f20749dd6ddc9e0536788eaad70ea4b5` (tag `VER-2-13-3`) | Git submodule `third_party/freetype` (GitHub mirror of [gitlab.freedesktop.org/freetype/freetype](https://gitlab.freedesktop.org/freetype/freetype)). Built from source by first-party `third_party/msvc/freetype.vcxproj`. Output `freetype.lib` is generated, not committed. | FTL or GPLv2 (`third_party/freetype/LICENSE.TXT`, `docs/FTL.TXT`, `docs/GPLv2.TXT`) | Color emoji / `imgui_freetype` |
 | KUARA-Dynamic | submodule `third_party/kuara_dynamic` | Detection engine. BSI compiles selected sources and talks to it through `src/detect/kuara_adapter.cpp`. Do not treat KUARA as a UI plugin. | Attribution-NonSale (`third_party/kuara_dynamic/LICENSE`) | Signature matching engine |
+| miniz | `77d0dce8627735138c51770d1799a1ef48f2117d` (tag `3.1.2`) | Git submodule `third_party/miniz` ([richgel999/miniz](https://github.com/richgel999/miniz)). Host compiles `miniz.c` / `miniz_tdef.c` / `miniz_tinfl.c` / `miniz_zip.c` with `MINIZ_NO_ARCHIVE_APIS` + `MINIZ_NO_STDIO`. CMake export stub is `third_party/miniz_export.h` (outside the submodule). | MIT (`third_party/miniz/LICENSE`) | zlib inflate for PyInstaller / analysis |
 
 imgui `misc/freetype` is part of the Dear ImGui submodule, not a separate dependency.
 
@@ -47,6 +48,8 @@ imgui `misc/freetype` is part of the Dear ImGui submodule, not a separate depend
 ## First-party build wrappers
 
 `third_party/msvc/freetype.vcxproj` is application build integration. It compiles a minimal FreeType set (no examples, tests, docs, or tools) with the same `/MT` CRT as the app. It does not patch FreeType sources.
+
+`third_party/miniz_export.h` is the MSVC stand-in for CMake-generated `miniz_export.h` so the miniz submodule builds without running CMake.
 
 ## Platform SDK (not in `third_party/`)
 
