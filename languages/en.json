@@ -586,6 +586,7 @@
     "pe.analysis_col.functions": "Functions",
     "pe.analysis_col.file": "File",
     "pe.analysis_col.files": "Files",
+    "pe.analysis_col.blocks": "Blocks",
     "pe.analysis_col.name": "Name",
     "pe.analysis_col.kind": "Kind",
     "pe.analysis_col.size": "Size",

@@ -36,6 +36,7 @@ Static C++ providers in `src/analyze/` (not plugins):
 - **Go** — buildinfo and pclntab (function tables for 1.16+; older tables detected only)
 - **AutoIt** — SCRIPT / overlay inventory
 - **AutoHotkey** — Ahk2Exe overlay/RCDATA inventory and plaintext fragments
+- **LabVIEW** — NI RSRC container and block inventory (diagram usually stripped in Application Builder EXEs)
 
 The **Analysis** view renders generic artifact trees. Identity of a packer still belongs in JSON signatures, not in these providers.
 

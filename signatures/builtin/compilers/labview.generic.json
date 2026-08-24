@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "id": "compiler.labview.generic",
+  "name": "LabVIEW",
+  "category": "compiler",
+  "vendor": "National Instruments",
+  "product_key": "labview",
+  "confidence": "high",
+  "native_only": true,
+  "author": "candestan",
+  "reference": "https://www.ni.com/labview/",
+  "description": "LabVIEW / LabVIEW Run-Time identity. Application Builder EXEs are usually MSVC stubs that import LVRT and embed NI RSRC containers; the G block diagram is typically stripped.",
+  "conditions": {
+    "any": [
+      { "imported_dll": "lvrt.dll", "weight": 70 },
+      { "imported_dll": "lvrtdark.dll", "weight": 70 },
+      {
+        "imported_dll": "lvrt",
+        "match": "contains",
+        "weight": 55
+      },
+      {
+        "imported_dll": "mgcore_",
+        "match": "prefix",
+        "weight": 40
+      },
+      {
+        "version_string": {
+          "key": "ProductName",
+          "contains": "LabVIEW"
+        }
+      },
+      {
+        "version_string": {
+          "key": "FileDescription",
+          "contains": "LabVIEW"
+        }
+      },
+      {
+        "version_string": {
+          "key": "InternalName",
+          "contains": "LabVIEW"
+        }
+      },
+      { "string_contains": "LabVIEW Run-Time" },
+      { "string_contains": "LabVIEW Runtime" },
+      { "string_contains": "Unable to locate the LabVIEW Run-Time Engine" },
+      { "string_contains": "SOFTWARE\\National Instruments\\LabVIEW" },
+      { "string_contains": "National Instruments\\Shared\\LabVIEW" },
+      {
+        "byte_pattern": "52 53 52 43 0D 0A ?? ?? ?? ?? ?? ?? 4C 42 56 57",
+        "where": "file",
+        "weight": 75
+      },
+      {
+        "byte_pattern": "52 53 52 43 0D 0A ?? ?? 4C 56 49 4E",
+        "where": "file",
+        "weight": 70
+      },
+      {
+        "all": [
+          {
+            "byte_pattern": "52 53 52 43 0D 0A",
+            "where": "file",
+            "weight": 45
+          },
+          {
+            "any": [
+              { "string_contains": "LabVIEW" },
+              { "string_contains": "LVRT" },
+              { "imported_dll": "lvrt.dll" },
+              { "imported_dll": "lvrt", "match": "contains" }
+            ]
+          }
+        ]
+      },
+      {
+        "all": [
+          {
+            "version_string": {
+              "key": "CompanyName",
+              "contains": "National Instruments"
+            }
+          },
+          {
+            "any": [
+              { "string_contains": "LabVIEW" },
+              { "string_contains": "LVRT" },
+              { "imported_dll": "lvrt.dll" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

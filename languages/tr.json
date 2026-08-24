@@ -586,6 +586,7 @@
     "pe.analysis_col.functions": "Fonksiyonlar",
     "pe.analysis_col.file": "Dosya",
     "pe.analysis_col.files": "Dosyalar",
+    "pe.analysis_col.blocks": "Block'lar",
     "pe.analysis_col.name": "Ad",
     "pe.analysis_col.kind": "Tur",
     "pe.analysis_col.size": "Boyut",

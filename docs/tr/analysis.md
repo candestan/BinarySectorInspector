@@ -36,6 +36,7 @@ Reload: Settings → Detection.
 - **Go** — buildinfo ve pclntab (1.16+ function table; eskiler yalnızca detect)
 - **AutoIt** — SCRIPT / overlay inventory
 - **AutoHotkey** — Ahk2Exe overlay/RCDATA ve plaintext fragment
+- **LabVIEW** — NI RSRC container / block inventory (Application Builder EXE'lerde diagram genelde strip)
 
 **Analysis** view generic artifact tree çizer. Packer kimliği JSON signature'da kalır.
 

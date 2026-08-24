@@ -126,6 +126,9 @@
     <ClCompile Include="src\analyze\ahk_analyzer.cpp">
       <Filter>analyze</Filter>
     </ClCompile>
+    <ClCompile Include="src\analyze\labview_analyzer.cpp">
+      <Filter>analyze</Filter>
+    </ClCompile>
     <ClCompile Include="src\tool\tool.cpp">
       <Filter>tool</Filter>
     </ClCompile>

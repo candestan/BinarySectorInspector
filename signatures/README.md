@@ -125,6 +125,9 @@ Shipped procedural analyzers (static `AnalyzerProvider`, no DLL ABI):
 * Go — buildinfo + pclntab (1.16+ function tables; older pclntab is detected, not fully walked)
 * AutoIt — SCRIPT / overlay container inventory (compiled payload, not original source)
 * AutoHotkey — Ahk2Exe overlay/RCDATA inventory and plaintext fragments (not a decompiler)
+* LabVIEW — NI RSRC container / block inventory when `product_key` `labview` matches (not a G decompiler)
+
+Identity JSON: `compiler.labview.generic`, `packer.labview.generic`. Interactive RSRC graph UI remains in the DecompBeaker plugin.
 
 Do not add a C++ condition such as `is_confuserex`. Extend `DetectFacts` only when a new leaf is useful to many products.
 

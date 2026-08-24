@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "id": "packer.labview.generic",
+  "name": "LabVIEW Application Builder",
+  "category": "packer",
+  "vendor": "National Instruments",
+  "product_key": "labview",
+  "confidence": "high",
+  "native_only": true,
+  "author": "candestan",
+  "reference": "https://www.ni.com/en/support/documentation/supplemental/06/ni-labview-application-builder.html",
+  "description": "LabVIEW Application Builder packaged executable: LVRT import and/or NI Resource Container (RSRC) plus LabVIEW Run-Time strings. Not a classical packer; block diagrams are usually removed at build time.",
+  "conditions": {
+    "any": [
+      { "imported_dll": "lvrt.dll", "weight": 70 },
+      { "imported_dll": "lvrtdark.dll", "weight": 70 },
+      {
+        "imported_dll": "lvrt",
+        "match": "contains",
+        "weight": 55
+      },
+      { "string_contains": "LabVIEW Run-Time" },
+      { "string_contains": "LabVIEW Runtime" },
+      { "string_contains": "Unable to locate the LabVIEW Run-Time Engine" },
+      { "string_contains": "SOFTWARE\\National Instruments\\LabVIEW" },
+      { "string_contains": "National Instruments\\Shared\\LabVIEW" },
+      {
+        "version_string": {
+          "key": "ProductName",
+          "contains": "LabVIEW"
+        }
+      },
+      {
+        "byte_pattern": "52 53 52 43 0D 0A ?? ?? ?? ?? ?? ?? 4C 42 56 57",
+        "where": "file",
+        "weight": 75
+      },
+      {
+        "byte_pattern": "52 53 52 43 0D 0A ?? ?? 4C 56 49 4E",
+        "where": "file",
+        "weight": 70
+      },
+      {
+        "all": [
+          {
+            "byte_pattern": "52 53 52 43 0D 0A",
+            "where": "file",
+            "weight": 45
+          },
+          {
+            "any": [
+              { "string_contains": "LabVIEW" },
+              { "string_contains": "LVRT" },
+              { "imported_dll": "lvrt.dll" },
+              { "imported_dll": "lvrt", "match": "contains" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
